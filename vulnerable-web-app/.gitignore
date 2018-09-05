@@ -1,0 +1,7 @@
+__pycache__/
+virtualenv/
+ImageMagick-6.7.9-10/
+*.pyc
+*.swp
+*~
+
