@@ -13,7 +13,18 @@
  * Vagrant
 
 ## Environment setup
-Start the virtual machine
+Follow the download link to get the Vagrant box and install it:
+
+```
+$ vagrant box add --name bsideslux18/apparmor virtualbox-gdemarcs-bsideslux18.box
+```
+
+
+
+Then spin up the virtual machine:
+
+
+
 ```
 $ git clone --depth=1 --branch master https://github.com/gdemarcsek/bsideslux18.git
 $ cd bsideslux18
@@ -21,22 +32,25 @@ $ vagrant up && vagrant ssh
 $ ls -la /vagrant
 ```
 
-## Python packages
+## Web app setup
+
+This step will only be needed later, but this is how you can set up the Python web app:
+
 ```
-$ # in ~/vulnerable-web-app
+$ cd ~/vulnerable-web-app
 $ sudo pip install virtualenv
 $ virtualenv -p python3 --system-site-packages virtualenv
 $ source ./virtualenv/bin/activate
 $ pip install -r requirements.txt
 ```
 
-## Building ImageMagick
+## Building the image
+
+The Vagrant image can also be built locally but it takes quite some time:
+
 ```
-$ tar xf ImageMagick-6.7.9-10.tar.xz
-$ cd ImageMagick-6.7.9-10
-$ ./configure --with-rsvg=yes
-$ make
-$ sudo make install
+$ cd image
+$ packer build workshop.json
 ```
 
 # Lab tasks
