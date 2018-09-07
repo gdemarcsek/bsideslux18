@@ -1,4 +1,5 @@
 aa_hello_world
 *.swp
 *~
+.vagrant/
 

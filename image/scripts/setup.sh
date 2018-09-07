@@ -22,7 +22,7 @@ echo 'APT::Periodic::Enable "0";' >> /etc/apt/apt.conf.d/10periodic
 
 # Get workshop dependencies
 apt update
-apt install apparmor auditd apparmor-utils apparmor-easyprof libapparmor1 libapparmor-dev wget git vim python3 python-apparmor build-essential -y
+apt install apparmor apparmor-profiles auditd apparmor-utils apparmor-easyprof libapparmor1 libapparmor-dev wget git vim python3 python-apparmor build-essential -y
 pip install virtualenv
 
 wget "https://www.imagemagick.org/download/releases/ImageMagick-6.8.9-10.tar.xz" && tar xf ImageMagick-6.8.9-10.tar.xz && pushd ImageMagick-6.8.9-10/ && ./configure --with-rsvg=yes && make && make install && popd && rm -rf ImageMagick-6.8.9-10/
