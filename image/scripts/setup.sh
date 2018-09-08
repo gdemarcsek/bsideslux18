@@ -1,4 +1,4 @@
-#!/bin/bash -eux
+#!/bin/bash
 
 # Guest additions setup
 # Mount the disk image
@@ -22,10 +22,35 @@ echo 'APT::Periodic::Enable "0";' >> /etc/apt/apt.conf.d/10periodic
 
 # Get workshop dependencies
 apt update
-apt install apparmor apparmor-profiles auditd apparmor-utils apparmor-easyprof libapparmor1 libapparmor-dev wget git vim python3 python-apparmor build-essential -y
+apt install apparmor \
+            apparmor-profiles \
+            auditd apparmor-utils \
+            apparmor-easyprof \
+            libapparmor1 \
+            libapparmor-dev \
+            wget curl \
+            git \
+            vim \
+            python3 \
+            python-apparmor \
+            build-essential \
+            python-pip \
+            python3-distutils screen \
+            librsvg2-2 librsvg2-dev librsvg2-bin \
+            libpng16-16 libpng-dev libpng-tools \
+            libopenjp2-7 libopenjp2-7-dev \
+            ghostscript gsfonts -y
+
 pip install virtualenv
 
-wget "https://www.imagemagick.org/download/releases/ImageMagick-6.8.9-10.tar.xz" && tar xf ImageMagick-6.8.9-10.tar.xz && pushd ImageMagick-6.8.9-10/ && ./configure --with-rsvg=yes && make && make install && popd && rm -rf ImageMagick-6.8.9-10/
+IMAGETRAGICK_VERSION="6.8.6-10"
+IMAGETRAGICK_URL="https://www.imagemagick.org/download/releases/ImageMagick-${IMAGETRAGICK_VERSION}.tar.xz"
+
+wget "$IMAGETRAGICK_URL" && \
+    tar xf ImageMagick-${IMAGETRAGICK_VERSION}.tar.xz && \
+    pushd ImageMagick-${IMAGETRAGICK_VERSION}/ && \
+    ./configure --with-jpeg=yes --with-png=yes --with-rsvg=yes && \
+    make && make install && popd && rm -rf ImageMagick-${IMAGETRAGICK_VERSION}/
 
 # Add SSH key
 mkdir -p /home/vagrant/.ssh
@@ -34,6 +59,11 @@ chmod go-w /home/vagrant/
 chmod 700 /home/vagrant/.ssh
 chmod 600 /home/vagrant/.ssh/authorized_keys
 chown -R vagrant:vagrant /home/vagrant/.ssh
+
+# Clone imagemagick pocs
+cd /home/vagrant
+git clone "https://github.com/ImageTragick/PoCs.git" .imagetragick
+chown -R vagrant:vagrant .imagetragick
 
 # More cleanup
 apt autoremove

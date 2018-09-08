@@ -1,0 +1,27 @@
+# Get rid of the startup message
+startup_message off
+
+# Stop flashing when I get an alert
+vbell off
+
+# Automatically detach if a disconnect occurs
+autodetach on
+
+# Think of it as xterm and give me scrolling
+termcapinfo xterm-color|xterm|xterms|xs|rxvt ti@:te@
+
+# Tabs along the bottom of the session
+caption always "%{= k}%-w%{= G}%n %t%{-}%+w %-= %{= G}%H"
+
+# Start at Window 1
+bind c screen 1
+bind ^c screen 1
+bind 0 select 10
+screen 1
+
+# Allow h and l to move between tabs as well
+bind h prev
+bind ^h prev
+bind l next
+bind ^l next
+
