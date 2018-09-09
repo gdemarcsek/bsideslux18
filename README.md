@@ -318,7 +318,7 @@ $ tree -d /etc/apparmor.d
 
 [EXTRA-EXPLANATION]
 
-## Easy profile generation with `aa-logprof`
+## Easy profile generation with `aa-logprof / aa-genprof`
 This time, we are going to confine a shell script with AppArmor:
 
 ```
@@ -469,13 +469,62 @@ $ ./aa_hello_world.sh
 $ cat /tmp/wlog.*
 ```
 
+As we can see, the script works again as expected.
+
 ## Inspecting the vulnerabilities of the web application
-Let's briefly go through the potential vulnerabilities our web application suffers from.
+
+Let's briefly go through the potential vulnerabilities our web application suffers from. First of all, let's have a screen session inside the VM - just so we can have multiple terminals - and start the web application (assuming the web app is set up as shown in the earlier chapter and we are already in the virtualenv):
+
+
+
+```
+$ # in /vagrant/vulnerable-web-app/
+$ gunicorn -c gunicorn.conf.py wsgi
+```
+
+Now if you used the Vagrantfile f rom the repository, port forwarding should be set up so unless there was a port collision, you can take your browser and navigate to:
+
+```
+http://localhost:8080/
+```
+
+First of all, let's try it with something inoccous: try and resize `payloads/innocent.jpg` - we will get back the resized version. In the background, the web application called a CLI utility of the ImageMagick image processing library to rescale the picture. 
+
+
+
+*Together: Check the code of the application*
+
+
+
+Now as we can see our little web service is quite simple and looks pretty much secure Unfortunately though, the ImageMagick library and - thus the convert utility as well - is vulnerable to various attack vectors, including arbitrary command execution, local file read, local file deletion and server side request forgery. I'm pretty sure that you know what we are seeing here - we are dealing with the infamous shitbucket often referred to as "ImageTragick". 
+
+
+
+So let's quickly try our a few scenarios, just to prove that the vulnerabilities are really there:
+
+
+
+```
+payloads/rce.jpg - Execute arbitrary command (the file you-are-owned will appear)
+payloads/read.jpg - Read /etc/passwd
+payloads/delete.jpg - Delete the .bash_history file of the vagrant user
+```
+
+
 
 ## Writing our AppArmor profile for a vulnerable web application
 
 
+
+
+
 ## Privilege separation using `aa_change_hat`
+
+
+
+## Kernel hardening and what happens if we don't have it
+
+
 
 
 ## Next steps
