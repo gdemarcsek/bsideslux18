@@ -1,10 +1,13 @@
 # Introduction
 
-## Linux Security Modules
+Slides:
 
-## Mandatory Access Control
+* LSM
+* MAC
+* AppArmor confinement model
+* Then lab setup slide and we are kicking off...
 
-## Confinement with AppArmor
+
 
 # Lab setup
 
@@ -386,8 +389,10 @@ network inet stream,
 /proc/loadavg r,
 ```
 
+*Explanation*:
 
-[EXTRA-EXPLANATION]
+- /etc/nsswitch.conf and /etc/services are needed for DNS and protocol name <-> port resolutions done by netcat
+- w needs /etc/passwd and /etc/nsswitch.conf to get user information; it needs /run/utmp because that file contains the login records; it needs a bunch of files from /proc to display the uptime and load averages, CPU time and the command line of itself while /proc/sys/kernel/osrelease is probably needed because different kernels use slightly different utmp file format, fin
 
 Resulting in a raw profile:
 
@@ -453,12 +458,69 @@ Resulting in a raw profile:
     /proc/uptime r,
     /run/utmp rk,
     /usr/bin/w.procps mr,
-    owner /tmp/* w,
+    owner /tmp/wlog.* w,
 
   }
 }
 
 ```
+
+*Explanation*:
+
+What the heck is `/lib/x86_64-linux-gnu/ld-*.so mr` for?  That's the dynamic linker, but then we should see some open and mmap calls to it then when we invoke a dynamically linked executable, right?
+
+```
+$ ldd $(which pwd)
+$ strace pwd
+```
+
+Notice the first few syscalls:
+
+```
+execve("/bin/pwd", ["pwd"], 0x7ffe813b04a0 /* 24 vars */) = 0
+brk(NULL)                               = 0x560a0dab7000
+access("/etc/ld.so.nohwcap", F_OK)      = -1 ENOENT (No such file or directory)
+access("/etc/ld.so.preload", R_OK)      = -1 ENOENT (No such file or directory)
+openat(AT_FDCWD, "/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3
+fstat(3, {st_mode=S_IFREG|0644, st_size=35872, ...}) = 0
+mmap(NULL, 35872, PROT_READ, MAP_PRIVATE, 3, 0) = 0x7f771e606000
+close(3)                                = 0
+access("/etc/ld.so.nohwcap", F_OK)      = -1 ENOENT (No such file or directory)
+openat(AT_FDCWD, "/lib/x86_64-linux-gnu/libc.so.6", O_RDONLY|O_CLOEXEC) = 3
+...
+```
+
+As we can see, instead of opening ld-2.27.so, we are accessing /etc/ld.so.cache - a file that contains library paths compliled by ld.so and it can be used as a cache to find the location of shared objects, like libc - the program gets the location of libc from this file and opens it. So do we really need the read and mmap right for the dynamic linker? Shouldn't we have a rule instead that allows reading and mapping /etc/ld.so.cache? Yep, right, so here is the deal. aa-genprof uses aa-autodep to generate the initial profile before inspecing any logs. Now aa-autodep invoked `ldd` to figure out which shared libraries are required by an ELF executable because it wants to help your life by putting the required shared libraries into the profile automatically. Now  `ldd` shows the loaded libraries after resolution and even those that are mapped automatically by the kernel - these libraries will not show up in the output of `strace` either. 
+
+
+
+This is confusing, because if we check the profile of `/bin/ping` , we see no such entry either that would allow the reading and mapping of `/lib/x86_64-linux-gnu/ld-*.so mr` but now we are kind of sure that it would be necessary. 
+
+
+
+Enter the base abstraction! Abstractions are common, reusable policies that try to describe privileges needed to perform certain higher level functions, for example:
+
+```
+/etc/apparmor.d/abstractions/nameservice - For programs that wish to perform nameservice-like operations (including LDAP, passwd, DNS, etc.)
+/etc/apparmor.d/abstractions/python - Adds read and map rights for common standard Python library locations and other shared objects used by the Python interpreter
+/etc/apparmor.d/abstractions/bash - Common file access rights needed by bash - thus most shell scripts as well
+/etc/apparmor.d/abstractions/consoles - Provides access to terminal devices
+/etc/apparmor.d/abstractions/user-tmp - Provides read-write access to per-user and global tmp directories and files in them
+/etc/apparmor.d/abstractions/authentication - Access to files commonly needed by apps that perform user authentication (e.g.: PAM modules, /etc/shadow, etc.)
+/etc/apparmor.d/abstractions/ssl_certs - Read access to common certificate store locations (almost always needed by clients and servers using TLS)
+/etc/apparmor.d/abstractions/gnome - Common access rights generally needed by GNOME applications
+/etc/apparmor.d/abstractions/base - Common permissions needed by almost all Linux programs to function
+```
+
+The base policy provides a bunch of common permissions that are needed by the vast majority of Linux executables to run, in particular, it takes care of defining rules that allow the loading of shared libraries:
+
+```
+$ cat /etc/apparmor.d/abstractions/base | grep ld
+```
+
+So, `aa-autodep` is not perfect - it should have recognized that it's adding a duplicate rule. In other words, yes, we could remove those lines, but not because they are not needed, but because they are already present in the base abstraction. 
+
+
 
 Let's put the profile back into enforce mode and run the script again:
 
@@ -510,9 +572,25 @@ payloads/read.jpg - Read /etc/passwd
 payloads/delete.jpg - Delete the .bash_history file of the vagrant user
 ```
 
+*Explanation*: Briefly explain how the vulnerabilities work, without going very much into details as it is not very important in the context of this workshop. 
 
+ 
 
 ## Writing our AppArmor profile for a vulnerable web application
+
+Let's stop the web service for a while. We are going to create a profile in 2 phases:
+
+1. Startup and serving requests - first we. only start and stop the application to see what common access rights are needed
+2. We are going to exercise the app with a legitimate payload (innocent.jpg)
+
+But first, which process are we trying to confine? To answer that question, we must ask ourselves: which file is executed to start the server process? Well it is unicorn:
+
+```
+$ which gunicorn
+/vagrant/vulnerable-web-app/virtualenv/bin/gunicorn
+```
+
+Well obviously, there could be some other shell scripts wrapping the gunicorn process, but that's OK, our app would still be confined. The problem arises when somebody starts our WSGI applciation with an alternative web server, say Flask's development server or Tornado. If the service is started without executing the gunicorn file, our web app would stay unconfined and unprotected. We are going to address this later on, but for the moment, let's just ignore this problem for a second, we will get back to this.
 
 
 
@@ -522,7 +600,15 @@ payloads/delete.jpg - Delete the .bash_history file of the vagrant user
 
 
 
+
+
 ## Kernel hardening and what happens if we don't have it
+
+
+
+## Application-initiated confinement (or `aa_change_profile`)
+
+
 
 
 
