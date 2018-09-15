@@ -39,7 +39,8 @@ apt install apparmor \
             librsvg2-2 librsvg2-dev librsvg2-bin \
             libpng16-16 libpng-dev libpng-tools \
             libopenjp2-7 libopenjp2-7-dev \
-            ghostscript gsfonts -y
+            ghostscript gsfonts \
+            tree ntp -y
 
 pip install virtualenv
 
@@ -59,6 +60,9 @@ chmod go-w /home/vagrant/
 chmod 700 /home/vagrant/.ssh
 chmod 600 /home/vagrant/.ssh/authorized_keys
 chown -R vagrant:vagrant /home/vagrant/.ssh
+
+# Do not pass LC and LANG env vars
+sed -i 's/[^#]*\(AcceptEnv LANG LC_\*\)/#\1/g' /etc/ssh/sshd_config
 
 # Clone imagemagick pocs
 cd /home/vagrant

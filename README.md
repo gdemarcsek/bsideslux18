@@ -286,20 +286,20 @@ Let's screw up the profile again in the file so we know it should normally break
 Checking all AppArmor events:
 
 ```
-sudo journalctl --since yesterday -a _TRANSPORT=audit --no-pager | aa-decode 2>/dev/null | grep AVC
+sudo journalctl --since yesterday -a _TRANSPORT=audit --no-pager | aa-decode | grep AVC
 ```
 
 Checking only access denied events:
 
 ```
-sudo journalctl --since yesterday -a _TRANSPORT=audit --no-pager | aa-decode 2>/dev/null | grep AVC | grep 'apparmor="DENIED"'
+sudo journalctl --since yesterday -a _TRANSPORT=audit --no-pager | aa-decode | grep AVC | grep 'apparmor="DENIED"'
 ```
 
 [EXTRA-EXPLANATION]
 
 Checking status events
 ```
-sudo journalctl --since yesterday -a _TRANSPORT=audit --no-pager | aa-decode 2>/dev/null | grep AVC | grep 'apparmor="STATUS"'
+sudo journalctl --since yesterday -a _TRANSPORT=audit --no-pager | aa-decode | grep AVC | grep 'apparmor="STATUS"'
 ```
 
 [EXTRA-EXPLANATION]
@@ -627,7 +627,7 @@ The `owner` qualifier only lets the program read the files that are owned by the
 We can inspect the audit records of the network operations attempted by `nc`:
 
 ```
-$ sudo journalctl --since yesterday -a _TRANSPORT=audit --no-pager | aa-decode 2>/dev/null | grep AVC | grep 'apparmor="AUDIT"
+$ sudo journalctl --since yesterday -a _TRANSPORT=audit --no-pager | aa-decode | grep AVC | grep 'apparmor="AUDIT"
 Sep 12 16:26:31 vagrant audit[1349]: AVC apparmor="AUDIT" operation="create" profile="/home/vagrant/aa_qualifiers.sh" pid=1349 comm="nc" family="unix" sock_type="stream" protocol=0 requested_mask="create" addr=none
 Sep 12 16:26:31 vagrant audit[1349]: AVC apparmor="AUDIT" operation="create" profile="/home/vagrant/aa_qualifiers.sh" pid=1349 comm="nc" family="inet" sock_type="stream" protocol=6 requested_mask="create"
 Sep 12 16:26:31 vagrant audit[1349]: AVC apparmor="AUDIT" operation="connect" profile="/home/vagrant/aa_qualifiers.sh" pid=1349 comm="nc" family="inet" sock_type="stream" protocol=6 requested_mask="connect"
@@ -741,32 +741,82 @@ profile @{APP_ROOT}/virtualenv/bin/gunicorn {
   @{APP_ROOT}/__pycache__ r,
   @{APP_ROOT}/__pycache__/**/ r,
   @{APP_ROOT}/__pycache__/*.{py,pyc} mr,
+  @{APP_ROOT}/*.{py,pyc} mr,
   @{APP_ROOT}/virtualenv/* r,
   @{APP_ROOT}/virtualenv/**/ r,
   @{APP_ROOT}/virtualenv/lib/**.{py,pyc} mr,
 
+  @{APP_ROOT}/virtualenv/lib/python3.6/orig-prefix.txt r,
 }
 ```
 
-TODO: When complete, add it to the git repo, let's not waste too much time on the initial profile!!!
+This is the point for me to say: I do not generally suggest to use `aa-logprof` / `aa-genprof` - it's quite full of bugs and doesn't provide so much of help in case of complex applications. So instead, let's just start from here, put it into enforce mode and work our way to making things work. Don't forget, first we will just focus on getting the Python service running, without exercising any functionality. 
 
 
 
-OK, Now let's just start the application, let it start up and quit it with Ctrl-C after a few seconds:
-
-```
-$ gunicorn -c gunicorn.conf.py wsgi
-```
-
-Then let's start adjusting the profile using `aa-logprof` :
-
-
+The first problem will we see is that the service is not able to open a socket and listen on it:
 
 ```
-$ sudo aa-logprof
+[2018-09-15 11:52:53 +0000] [16954] [ERROR] Can't connect to ('0.0.0.0', 8080)
+```
+
+Not too surprising: we did not yet allow our program to use the network, so let's add the rule that allows TCP/IP networking with auditing:
+
+```
+audit network inet tcp
 ```
 
 
+
+The next issue we will run into is that gunicorn tries to use some temporary files:
+
+```
+[2018-09-15 11:58:08 +0000] [17083] [INFO] Unhandled exception in main loop
+Traceback (most recent call last):
+  File "/vagrant/vulnerable-web-app/virtualenv/lib/python3.6/site-packages/gunicorn/arbiter.py", line 202, in run
+    self.manage_workers()
+  File "/vagrant/vulnerable-web-app/virtualenv/lib/python3.6/site-packages/gunicorn/arbiter.py", line 544, in manage_workers
+    self.spawn_workers()
+  File "/vagrant/vulnerable-web-app/virtualenv/lib/python3.6/site-packages/gunicorn/arbiter.py", line 611, in spawn_workers
+    self.spawn_worker()
+  File "/vagrant/vulnerable-web-app/virtualenv/lib/python3.6/site-packages/gunicorn/arbiter.py", line 564, in spawn_worker
+    self.cfg, self.log)
+  File "/vagrant/vulnerable-web-app/virtualenv/lib/python3.6/site-packages/gunicorn/workers/base.py", line 57, in __init__
+    self.tmp = WorkerTmp(cfg)
+  File "/vagrant/vulnerable-web-app/virtualenv/lib/python3.6/site-packages/gunicorn/workers/workertmp.py", line 23, in __init__
+    fd, name = tempfile.mkstemp(prefix="wgunicorn-", dir=fdir)
+  File "/vagrant/vulnerable-web-app/virtualenv/lib/python3.6/tempfile.py", line 474, in mkstemp
+    prefix, suffix, dir, output_type = _sanitize_params(prefix, suffix, dir)
+  File "/vagrant/vulnerable-web-app/virtualenv/lib/python3.6/tempfile.py", line 269, in _sanitize_params
+    dir = gettempdir()
+  File "/vagrant/vulnerable-web-app/virtualenv/lib/python3.6/tempfile.py", line 435, in gettempdir
+    tempdir = _get_default_tempdir()
+  File "/vagrant/vulnerable-web-app/virtualenv/lib/python3.6/tempfile.py", line 370, in _get_default_tempdir
+    dirlist)
+FileNotFoundError: [Errno 2] No usable temporary directory found in ['/tmp', '/var/tmp', '/usr/tmp', '/vagrant/vulnerable-web-app']
+```
+
+Now if we looked at the syscall trace, we would notice that Python's tempfile implementation tries to create a file in several candidate directories for temp file storage to find the first one that could be used by the application. Now instead of trying to figure out what to do, let's use screen to set up a log monitor which will tail the audit logs for us so wen can see what access was denied exactly:
+
+```
+$ sudo journalctl -f -a _TRANSPORT=audit | aa-decode 2>/dev/null | grep 'apparmor="DENIED"'
+```
+
+Well, not too surprisingly, we will see:
+
+```
+Sep 15 12:37:09 vagrant audit[21265]: AVC apparmor="DENIED" operation="mknod" profile="/vagrant/vulnerable-web-app/virtualenv/bin/gunicorn" name="/tmp/hptnmcg1" pid=21265 comm="gunicorn" requested_mask="c" denied_mask="c" fsuid=900 ouid=900
+Sep 15 12:37:09 vagrant audit[21265]: AVC apparmor="DENIED" operation="mknod" profile="/vagrant/vulnerable-web-app/virtualenv/bin/gunicorn" name="/var/tmp/4g3a6wxy" pid=21265 comm="gunicorn" requested_mask="c" denied_mask="c" fsuid=900 ouid=900
+Sep 15 12:37:09 vagrant audit[21265]: AVC apparmor="DENIED" operation="mknod" profile="/vagrant/vulnerable-web-app/virtualenv/bin/gunicorn" name="/vagrant/vulnerable-web-app/deal712z" pid=21265 comm="gunicorn" requested_mask="c" denied_mask="c" fsuid=900 ouid=900
+```
+
+So let's choose a temporary directory and provide write access to the files in it:
+
+```
+/tmp/** w,
+```
+
+If we try the profile again, we will see that read access will also be required, so let's add the `r` permission as well.
 
 
 

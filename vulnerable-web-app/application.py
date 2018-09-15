@@ -14,6 +14,7 @@ base_dir = os.path.dirname(__file__)
 app.config['UPLOAD_FOLDER'] = '/tmp/bsideslux18/uploads/'
 app.config['RESULT_FOLDER'] = '/tmp/bsideslux18/converted/'
 app.config['ALLOWED_EXTENSIONS'] = set(['png', 'svg', 'png', 'jpg'])
+app.config['PROPAGATE_EXCEPTIONS'] = True
 
 def load_config():
     app.config.from_pyfile(os.path.join(base_dir, 'config.prod.cfg'))
