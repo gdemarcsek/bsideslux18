@@ -276,20 +276,20 @@ Let's screw up the profile again in the file so we know it should normally break
 Checking all AppArmor events:
 
 ```
-journalctl --since yesterday -a _TRANSPORT=audit --no-pager | aa-decode 2>/dev/null | grep AVC
+sudo journalctl --since yesterday -a _TRANSPORT=audit --no-pager | aa-decode 2>/dev/null | grep AVC
 ```
 
 Checking only access denied events:
 
 ```
-journalctl --since yesterday -a _TRANSPORT=audit --no-pager | aa-decode 2>/dev/null | grep AVC | grep 'apparmor="DENIED"'
+sudo journalctl --since yesterday -a _TRANSPORT=audit --no-pager | aa-decode 2>/dev/null | grep AVC | grep 'apparmor="DENIED"'
 ```
 
 [EXTRA-EXPLANATION]
 
 Checking status events
 ```
-journalctl --since yesterday -a _TRANSPORT=audit --no-pager | aa-decode 2>/dev/null | grep AVC | grep 'apparmor="STATUS"'
+sudo journalctl --since yesterday -a _TRANSPORT=audit --no-pager | aa-decode 2>/dev/null | grep AVC | grep 'apparmor="STATUS"'
 ```
 
 [EXTRA-EXPLANATION]
@@ -533,14 +533,112 @@ $ cat /tmp/wlog.*
 
 As we can see, the script works again as expected.
 
-## Inspecting the vulnerabilities of the web application
 
-Let's briefly go through the potential vulnerabilities our web application suffers from. First of all, let's have a screen session inside the VM - just so we can have multiple terminals - and start the web application (assuming the web app is set up as shown in the earlier chapter and we are already in the virtualenv):
+
+## Using rule qualifiers
+
+Let's create a profile that:
+
+* Allows to read any files in home directories owned by the current user, except for SSH keys and configs (files under ~/.ssh)
+* It allows the use of networking, but it will enforce auditing network-related syscalls
+* Execute any other program with the same profile
+
+
+
+Our target program will be little shell script in `/vagrant/aa_qualifiers.sh` . First we are going to create an initial profile:
+
+```
+sudo aa-autodep /vagrant/aa_qualifiers.sh
+```
+
+
+
+We are going to do this together line by line of course, but the resulting profile should look something like this:
 
 
 
 ```
-$ # in /vagrant/vulnerable-web-app/
+# Last Modified: Wed Sep 12 16:08:41 2018
+#include <tunables/global>
+
+/vagrant/aa_qualifiers.sh {
+  #include <abstractions/base>
+  #include <abstractions/bash>
+
+  /bin/bash ix,
+  /home/vagrant/aa_qualifiers.sh r,
+  /lib/x86_64-linux-gnu/ld-*.so mr,
+
+  owner /home/vagrant/ r,	# the vagrant home dir itself
+  owner /home/vagrant/** r,	# all files within the home dir
+  owner /home/vagrant/**/ r,    # all directories within the home dir
+
+  deny /home/vagrant/.ssh r,	 # deny read to the .ssh directory itself
+  deny /home/vagrant/.ssh/** r,  # deny read to all files within
+  deny /home/vagrant/.ssh/**/ r, # deny read to all directories within
+
+  audit network, # audit all network access requests
+  /** ix, # allow running any other program with the same confinement
+}
+```
+
+Running the script we should see error messages when it is trying to read the `authorized_keys` file, thanks to the `deny` qualifier:
+
+
+
+```
+$ /usr/bin/head: cannot open '/home/vagrant/.ssh/authorized_keys' for reading: Permission denied
+```
+
+Now let's create a world-readable root-owned file in vagrant's home directory:
+
+```
+$ echo "test" > testfile
+$ sudo chown root:root ./testfile
+$ sudo chmod o=r ./testfile
+```
+
+And add the following line to the `aa_qualifiers.sh` script:
+
+```
+/usr/bin/head /home/vagrant/testfile
+```
+
+If we try to run again, we should see the following error message in the very end:
+
+```
+/usr/bin/head: cannot open '/home/vagrant/testfile' for reading: Permission denied
+```
+
+The `owner` qualifier only lets the program read the files that are owned by the same fsuid.
+
+
+
+We can inspect the audit records of the network operations attempted by `nc`:
+
+```
+$ sudo journalctl --since yesterday -a _TRANSPORT=audit --no-pager | aa-decode 2>/dev/null | grep AVC | grep 'apparmor="AUDIT"
+Sep 12 16:26:31 vagrant audit[1349]: AVC apparmor="AUDIT" operation="create" profile="/home/vagrant/aa_qualifiers.sh" pid=1349 comm="nc" family="unix" sock_type="stream" protocol=0 requested_mask="create" addr=none
+Sep 12 16:26:31 vagrant audit[1349]: AVC apparmor="AUDIT" operation="create" profile="/home/vagrant/aa_qualifiers.sh" pid=1349 comm="nc" family="inet" sock_type="stream" protocol=6 requested_mask="create"
+Sep 12 16:26:31 vagrant audit[1349]: AVC apparmor="AUDIT" operation="connect" profile="/home/vagrant/aa_qualifiers.sh" pid=1349 comm="nc" family="inet" sock_type="stream" protocol=6 requested_mask="connect"
+Sep 12 16:26:31 vagrant audit[1349]: AVC apparmor="AUDIT" operation="getsockopt" profile="/home/vagrant/aa_qualifiers.sh" pid=1349 comm="nc" laddr=127.0.0.1 lport=53468 faddr=127.0.0.1 fport=80 family="inet" sock_type="stream" protocol=6 requested_mask="getopt"
+Sep 12 16:30:53 vagrant audit[8078]: AVC apparmor="AUDIT" operation="create" profile="/home/vagrant/aa_qualifiers.sh" pid=8078 comm="nc" family="unix" sock_type="stream" protocol=0 requested_mask="create" addr=none
+Sep 12 16:30:53 vagrant audit[8078]: AVC apparmor="AUDIT" operation="create" profile="/home/vagrant/aa_qualifiers.sh" pid=8078 comm="nc" family="unix" sock_type="stream" protocol=0 requested_mask="create" addr=none
+Sep 12 16:30:53 vagrant audit[8078]: AVC apparmor="AUDIT" operation="create" profile="/home/vagrant/aa_qualifiers.sh" pid=8078 comm="nc" family="inet" sock_type="stream" protocol=6 requested_mask="create"
+Sep 12 16:30:53 vagrant audit[8078]: AVC apparmor="AUDIT" operation="connect" profile="/home/vagrant/aa_qualifiers.sh" pid=8078 comm="nc" family="inet" sock_type="stream" protocol=6 requested_mask="connect"
+Sep 12 16:30:53 vagrant audit[8078]: AVC apparmor="AUDIT" operation="getsockopt" profile="/home/vagrant/aa_qualifiers.sh" pid=8078 comm="nc" laddr=127.0.0.1 lport=53470 faddr=127.0.0.1 fport=80 family="inet" sock_type="stream" protocol=6 requested_mask="getopt"
+...
+```
+
+
+
+## Inspecting the vulnerabilities of the web application
+
+Let's briefly go through the potential vulnerabilities our web application suffers from. First of all, let's have a screen session inside the VM - just so we can have multiple terminals - and start the web application (assuming the web app is set up as shown in the earlier chapter and we are already in the virtualenv in `/vagrant/vulnerable-web-app/`):
+
+
+
+```
 $ gunicorn -c gunicorn.conf.py wsgi
 ```
 
@@ -606,9 +704,27 @@ Well obviously, there could be some other shell scripts wrapping the gunicorn pr
 
 
 
+
+
+## Risks of not scrubbing the environment
+
+
+
+
+
 ## Application-initiated confinement (or `aa_change_profile`)
 
 
+
+## Some bypass routes
+
+
+
+TODO: 
+
+* cap_sys_module
+* writes to /etc/cron.d/** or ~/.bashrc etc.
+* 
 
 
 
