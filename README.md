@@ -73,7 +73,17 @@ $ sudo systemctl enable apparmor
 $ sudo aa-status
 ```
 
+## Logging with auditd
+
+Make sure auditd is running and enabled at boot:
+
+```
+$ sudo service auditd status # or start
+$ sudo systemctl enable auditd
+```
+
 ## Checking security context of running processes
+
 Execute the `ping` utility in a terminal window:
 
 ```
@@ -689,6 +699,72 @@ $ which gunicorn
 ```
 
 Well obviously, there could be some other shell scripts wrapping the gunicorn process, but that's OK, our app would still be confined. The problem arises when somebody starts our WSGI applciation with an alternative web server, say Flask's development server or Tornado. If the service is started without executing the gunicorn file, our web app would stay unconfined and unprotected. We are going to address this later on, but for the moment, let's just ignore this problem for a second, we will get back to this.
+
+
+
+But first, let's create an initial profile:
+
+```
+$ sudo aa-autodep $(which gunicorn)
+```
+
+The initial profile seems good, but just for the sake of making our lives easier, let's add the following line to the profile and put it into complain mode:
+
+```
+#include <abstractions/python>
+```
+
+This will allow our process to read and map common Python libraries. Additionally, we are going to add a few more rules that will just let our Python process use the required libraries found in its virtual environment.
+
+Before moving on, we should have a profile like this:
+
+
+
+```
+# Last Modified: Sat Sep 15 09:40:15 2018
+#include <tunables/global>
+
+@{APP_ROOT} = /vagrant/vulnerable-web-app
+
+profile @{APP_ROOT}/virtualenv/bin/gunicorn {
+  #include <abstractions/base>
+  #include <abstractions/python>
+
+  # Dynamic linker
+  /lib/x86_64-linux-gnu/ld-*.so mr,
+
+  # Gunicorn and Python
+  @{APP_ROOT}/virtualenv/bin/gunicorn r,
+  @{APP_ROOT}/virtualenv/bin/python3 ix,
+
+  # Python files and libs
+  @{APP_ROOT}/__pycache__ r,
+  @{APP_ROOT}/__pycache__/**/ r,
+  @{APP_ROOT}/__pycache__/*.{py,pyc} mr,
+  @{APP_ROOT}/virtualenv/* r,
+  @{APP_ROOT}/virtualenv/**/ r,
+  @{APP_ROOT}/virtualenv/lib/**.{py,pyc} mr,
+
+}
+```
+
+TODO: When complete, add it to the git repo, let's not waste too much time on the initial profile!!!
+
+
+
+OK, Now let's just start the application, let it start up and quit it with Ctrl-C after a few seconds:
+
+```
+$ gunicorn -c gunicorn.conf.py wsgi
+```
+
+Then let's start adjusting the profile using `aa-logprof` :
+
+
+
+```
+$ sudo aa-logprof
+```
 
 
 
