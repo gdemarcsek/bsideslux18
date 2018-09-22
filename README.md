@@ -733,6 +733,9 @@ profile @{APP_ROOT}/virtualenv/bin/gunicorn {
   # Dynamic linker
   /lib/x86_64-linux-gnu/ld-*.so mr,
 
+  # The app root DIRECTORY itself
+  @{APP_ROOT}/ r,
+
   # Gunicorn and Python
   @{APP_ROOT}/virtualenv/bin/gunicorn r,
   @{APP_ROOT}/virtualenv/bin/python3 ix,
@@ -817,6 +820,148 @@ So let's choose a temporary directory and provide write access to the files in i
 ```
 
 If we try the profile again, we will see that read access will also be required, so let's add the `r` permission as well.
+
+We will see a few additional access request denials. For example, gunicorn needs to determine the current username so that it can query the corresponding complementary groups when setting ip the ownership of. worker processes - we can confirm that gunicorn calls `getpwuid()` using `ltrace` but the point is that when we trust that are system is not compromised, we should be OK with providing the necessary permissions without having the understand the exact reason behind them - it's cool if we do, but it's really not that important - on the other hand, as a side effect, AppArmor profiling gives us an opportunity to learn more about how our stuff works and what it is doing under the hood.
+
+
+
+Having that said, the final profile that enables us to at least successfully start the `gunicorn` workers will look something like:
+
+
+
+````
+# Last Modified: Sat Sep 15 09:40:15 2018
+#include <tunables/global>
+
+@{APP_ROOT} = /vagrant/vulnerable-web-app
+
+profile @{APP_ROOT}/virtualenv/bin/gunicorn {
+  #include <abstractions/base>
+  #include <abstractions/python>
+
+  # Dynamic linker
+  /lib/x86_64-linux-gnu/ld-*.so mr,
+
+  # The app root DIRECTORY itself
+  @{APP_ROOT}/ r,
+
+  # Gunicorn and Python
+  @{APP_ROOT}/virtualenv/bin/gunicorn r,
+  @{APP_ROOT}/virtualenv/bin/python3 ix,
+
+  # Python files and libs
+  @{APP_ROOT}/__pycache__ r,
+  @{APP_ROOT}/__pycache__/**/ r,
+  @{APP_ROOT}/__pycache__/*.{py,pyc} mr,
+  @{APP_ROOT}/*.{py,pyc} mr,
+  @{APP_ROOT}/virtualenv/* r,
+  @{APP_ROOT}/virtualenv/**/ r,
+  @{APP_ROOT}/virtualenv/lib/**.{py,pyc} mr,
+
+  @{APP_ROOT}/virtualenv/lib/python3.6/orig-prefix.txt r,
+
+  # Networking
+  audit network inet tcp,
+
+  # Temporary file access
+  /tmp/** rw,
+
+  # Reading the user database
+  /etc/nsswitch.conf r,
+  /etc/passwd r,
+
+  # List file descriptors
+  /proc/@{pid}/fd/ r,
+}
+````
+
+
+
+If we try this and take a look at the error messages, we can still see issues like these:
+
+```
+Sep 22 20:10:01 vagrant audit[3970]: AVC apparmor="DENIED" operation="exec" profile="/vagrant/vulnerable-web-app/virtualenv/bin/gunicorn" name="/sbin/ldconfig" pid=3970 comm="gunicorn" requested_mask="x" denied_mask="x" fsuid=900 ouid=0
+Sep 22 20:10:01 vagrant audit[3968]: AVC apparmor="DENIED" operation="exec" profile="/vagrant/vulnerable-web-app/virtualenv/bin/gunicorn" name="/usr/bin/x86_64-linux-gnu-gcc-7" pid=3968 comm="gunicorn" requested_mask="x" denied_mask="x" fsuid=900 ouid=0
+Sep 22 20:10:01 vagrant audit[3971]: AVC apparmor="DENIED" operation="exec" profile="/vagrant/vulnerable-web-app/virtualenv/bin/gunicorn" name="/usr/bin/x86_64-linux-gnu-gcc-7" pid=3971 comm="gunicorn" requested_mask="x" denied_mask="x" fsuid=900 ouid=0
+Sep 22 20:10:01 vagrant audit[3973]: AVC apparmor="DENIED" operation="exec" profile="/vagrant/vulnerable-web-app/virtualenv/bin/gunicorn" name="/usr/bin/x86_64-linux-gnu-ld.bfd" pid=3973 comm="gunicorn" requested_mask="x" denied_mask="x" fsuid=900 ouid=0
+Sep 22 20:10:01 vagrant audit[3972]: AVC apparmor="DENIED" operation="exec" profile="/vagrant/vulnerable-web-app/virtualenv/bin/gunicorn" name="/usr/bin/x86_64-linux-gnu-ld.bfd" pid=3972 comm="gunicorn" requested_mask="x" denied_mask="x" fsuid=900 ouid=0
+```
+
+We might wonder why our program needs to execute `ld`, `gcc` and `ldconfig` - well, it is mainly because we are using CPython where a significant part of Python modules use C libraries via the `ctype` Python module - which uses these executables to locate loadable shared libraries. Now while often times, well written modules will fall back to Python implementations when a native library is not found, unfortunately we cannot really on that generally, so we are going to have to include permissions to execute these binaries - although it would make sense to create a child profile for them. By the. time we go throw all the things needed by the Python ecosystem, we should end up with this profile:
+
+
+
+```
+# Last Modified: Sat Sep 15 09:40:15 2018
+#include <tunables/global>
+
+@{APP_ROOT} = /vagrant/vulnerable-web-app
+
+# We did this at this point because of an AppArmor bug that prevents subprofile transitions when the parent profile's name contains a variable but this will become useful for other reasons as well later!
+profile vulnerable @{APP_ROOT}/virtualenv/bin/gunicorn {
+  #include <abstractions/base>
+  #include <abstractions/python>
+
+  # Dynamic linker
+  /lib/x86_64-linux-gnu/ld-*.so mr,
+
+  # The app root DIRECTORY itself
+  @{APP_ROOT}/ r,
+
+  # Gunicorn and Python
+  @{APP_ROOT}/virtualenv/bin/gunicorn r,
+  @{APP_ROOT}/virtualenv/bin/python3 ix,
+
+  # Python files and libs
+  @{APP_ROOT}/__pycache__ r,
+  @{APP_ROOT}/__pycache__/**/ r,
+  @{APP_ROOT}/__pycache__/*.{py,pyc} mr,
+  @{APP_ROOT}/*.{py,pyc} mr,
+  @{APP_ROOT}/virtualenv/* r,
+  @{APP_ROOT}/virtualenv/**/ r,
+  @{APP_ROOT}/virtualenv/lib/**.{py,pyc} mr,
+
+  @{APP_ROOT}/virtualenv/lib/python3.6/orig-prefix.txt r,
+
+  # Networking
+  audit network inet tcp,
+
+  # Temporary file access
+  /tmp/** rw,
+
+  # Reading the user database
+  /etc/passwd r,
+  /etc/nsswitch.conf r,
+
+  # Reading process properties and resources
+  /proc/@{pid}/fd/ r,
+  /proc/@{pid}/mounts r,
+
+  # Needed by ctypes to load native libraries in certain Python modules
+  /{usr/bin/x86_64-linux-gnu-gcc-7,sbin/ldconfig,usr/bin/x86_64-linux-gnu-ld.bfd} Cx -> ctypes,
+
+  # Certain commands are executed in a shell by some modules, let's allow these guys
+  /bin/dash Cx ->  shell_commands,
+
+  profile shell_commands {
+    #include <abstractions/base>
+    /bin/dash mrix,
+    /bin/uname mrix, # Some modules execute uname to figure out the current OS instead of using os.uname...
+  }
+
+  profile ctypes {
+    #include <abstractions/base>
+    #include <abstractions/python>
+    /{usr/bin/x86_64-linux-gnu-gcc-7,sbin/ldconfig,sbin/ldconfig.real,usr/bin/x86_64-linux-gnu-ld.bfd} mrix,
+    /bin/dash mrix,
+    /usr/bin/x86_64-linux-gnu-objdump mrix,
+    /tmp/* wr,
+    /usr/lib/gcc/x86_64-linux-gnu/7/collect2 mrix,
+  }
+}
+```
+
+ 
 
 
 
