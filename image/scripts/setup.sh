@@ -40,7 +40,7 @@ apt install apparmor \
             libpng16-16 libpng-dev libpng-tools \
             libopenjp2-7 libopenjp2-7-dev \
             ghostscript gsfonts \
-            tree ntp -y
+            tree ntp peco -y
 
 pip install virtualenv
 

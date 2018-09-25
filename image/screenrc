@@ -8,7 +8,9 @@ vbell off
 autodetach on
 
 # Think of it as xterm and give me scrolling
-termcapinfo xterm-color|xterm|xterms|xs|rxvt ti@:te@
+defscrollback 10000
+termcapinfo xterm* ti@:te@
+defmousetrack on
 
 # Tabs along the bottom of the session
 caption always "%{= k}%-w%{= G}%n %t%{-}%+w %-= %{= G}%H"
@@ -17,7 +19,6 @@ caption always "%{= k}%-w%{= G}%n %t%{-}%+w %-= %{= G}%H"
 bind c screen 1
 bind ^c screen 1
 bind 0 select 10
-screen 1
 
 # Allow h and l to move between tabs as well
 bind h prev
@@ -25,3 +26,10 @@ bind ^h prev
 bind l next
 bind ^l next
 
+altscreen on
+windowlist string "%4n %h%=%f"
+
+screen -t Gunicorn 0 bash /vagrant/enter_gunicorn_virtualenv.sh
+screen -t AppArmor_Profile 1 sudo bash -c "vim /etc/apparmor.d/*gunicorn* ; $SHELL"
+screen -t AppArmor_Logs 2 sudo bash /vagrant/follow_apparmor_logs.sh
+screen 0

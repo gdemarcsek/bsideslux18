@@ -1,3 +1,4 @@
+TODO: Add globbing simplification -- some of the globbed rules are redundant, I just realized that :D
 # Introduction
 
 Slides:
@@ -763,10 +764,10 @@ The first problem will we see is that the service is not able to open a socket a
 [2018-09-15 11:52:53 +0000] [16954] [ERROR] Can't connect to ('0.0.0.0', 8080)
 ```
 
-Not too surprising: we did not yet allow our program to use the network, so let's add the rule that allows TCP/IP networking with auditing:
+Not too surprising: we did not yet allow our program to use the network, so let's add the rule that allows TCP/IP networking:
 
 ```
-audit network inet tcp
+network inet tcp
 ```
 
 
@@ -930,7 +931,7 @@ profile vulnerable @{APP_ROOT}/virtualenv/bin/gunicorn {
   /tmp/** rw,
 
   # Reading the user database
-  /etc/passwd r,
+  audit /etc/passwd r,
   /etc/nsswitch.conf r,
 
   # Reading process properties and resources
@@ -941,7 +942,7 @@ profile vulnerable @{APP_ROOT}/virtualenv/bin/gunicorn {
   /{usr/bin/x86_64-linux-gnu-gcc-7,sbin/ldconfig,usr/bin/x86_64-linux-gnu-ld.bfd} Cx -> ctypes,
 
   # Certain commands are executed in a shell by some modules, let's allow these guys
-  /bin/dash Cx ->  shell_commands,
+  audit /bin/dash Cx ->  shell_commands,
 
   profile shell_commands {
     #include <abstractions/base>
@@ -961,7 +962,47 @@ profile vulnerable @{APP_ROOT}/virtualenv/bin/gunicorn {
 }
 ```
 
- 
+ Now if we make our first request, we will notice that the application fails to read its configuration file, e.g.:
+
+```
+Sep 24 16:30:41 vagrant audit[24504]: AVC apparmor="DENIED" operation="open" profile="vulnerable" name="/vagrant/vulnerable-web-app/config.prod.cfg" pid=24504 comm="gunicorn" requested_mask="r" denied_mask="r" fsuid=900 ouid=900
+```
+
+so we can go ahead and add a new line allowing read access to the config file. If we read the source code carefully, we know that we will need it to have access to the HTML template files as well, so these are the two lines we need to add to load the page at `localhost:8080`:
+
+```
+  # Reading configuration file
+  @{APP_ROOT}/config.prod.cfg r,
+
+  # Reading template files
+  @{APP_ROOT}/templates/*.html r,
+```
+
+Now we can work our way further in the application following the logs, creating a child profile this time for ImageMagick. As we follow the logs, nothing should surprise us too much, but we should stick with following the audit logs - those never lie (e.g. it will show you real paths resolving all symbolic links and because they are from the running application, we are seeing the results corresponding to the current runtime environment)
+
+
+
+```
+@{UPLOADS_DIR} = /tmp/bsideslux18/uploads/
+@{RESULTS_DIR} = /tmp/bsideslux18/converted/
+/usr/local/bin/convert Cx -> imagemagick,
+profile imagemagick {
+    #include <abstractions/base>
+    # convert cli
+    /usr/local/bin/convert mrix,
+    # ImageMagick shared libraries
+    /usr/local/lib/*.so* mr,
+    # ImageMagick config files
+    /usr/local/etc/ImageMagick-6/* r,
+    # User files (input and output)
+    @{UPLOADS_DIR}/* r,
+    @{RESULTS_DIR}/* rw,
+}
+```
+
+Now with this updated profile, if we try out our application, it finally works perfectly! But what did we really accomplish here? Let's try to attack the app again with the ImageTragick payloads one by one and let's follow the logs in the meantime.
+
+
 
 
 
