@@ -1,0 +1,15 @@
+#include <tunables/global>
+
+profile dangerous {
+	#include <abstractions/base>
+	#include <abstractions/consoles>
+        /** ix,
+
+	/etc/cron.d/** w,   # Code execution via file writes
+	ptrace, 	    # Unrestricted ptrace
+	/proc/@{pid}/** w,  # Write permission to /proc files
+	
+        /home/vagrant/** r,
+        deny /home/vagrant/.ssh/** r,
+        /home/vagrant/.ssh w,
+}

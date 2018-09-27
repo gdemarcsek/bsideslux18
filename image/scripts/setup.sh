@@ -38,7 +38,7 @@ apt install apparmor \
             python3-distutils screen \
             librsvg2-2 librsvg2-dev librsvg2-bin \
             libpng16-16 libpng-dev libpng-tools \
-            libopenjp2-7 libopenjp2-7-dev \
+            libjpeg-dev \
             ghostscript gsfonts \
             tree ntp peco -y
 

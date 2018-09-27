@@ -1,12 +1,6 @@
-TODO: Add globbing simplification -- some of the globbed rules are redundant, I just realized that :D
 # Introduction
 
-Slides:
-
-* LSM
-* MAC
-* AppArmor confinement model
-* Then lab setup slide and we are kicking off...
+<See slides>
 
 
 
@@ -50,7 +44,7 @@ $ pip install -r requirements.txt
 
 ## Building the image
 
-The Vagrant image can also be built locally but it takes quite some time:
+The Vagrant image can also be built locally but it takes quite some time - please do not do this during the workshop ;)
 
 ```
 $ cd image
@@ -559,7 +553,7 @@ Let's create a profile that:
 Our target program will be little shell script in `/vagrant/aa_qualifiers.sh` . First we are going to create an initial profile:
 
 ```
-sudo aa-autodep /vagrant/aa_qualifiers.sh
+$ sudo aa-autodep /vagrant/aa_qualifiers.sh
 ```
 
 
@@ -577,16 +571,14 @@ We are going to do this together line by line of course, but the resulting profi
   #include <abstractions/bash>
 
   /bin/bash ix,
-  /home/vagrant/aa_qualifiers.sh r,
+  /vagrant/aa_qualifiers.sh r,
   /lib/x86_64-linux-gnu/ld-*.so mr,
 
   owner /home/vagrant/ r,	# the vagrant home dir itself
-  owner /home/vagrant/** r,	# all files within the home dir
-  owner /home/vagrant/**/ r,    # all directories within the home dir
+  owner /home/vagrant/** r,	# all files and dirs within the home dir
 
   deny /home/vagrant/.ssh r,	 # deny read to the .ssh directory itself
-  deny /home/vagrant/.ssh/** r,  # deny read to all files within
-  deny /home/vagrant/.ssh/**/ r, # deny read to all directories within
+  deny /home/vagrant/.ssh/** r,  # deny read to all files and dirs within
 
   audit network, # audit all network access requests
   /** ix, # allow running any other program with the same confinement
@@ -604,9 +596,9 @@ $ /usr/bin/head: cannot open '/home/vagrant/.ssh/authorized_keys' for reading: P
 Now let's create a world-readable root-owned file in vagrant's home directory:
 
 ```
-$ echo "test" > testfile
-$ sudo chown root:root ./testfile
-$ sudo chmod o=r ./testfile
+$ echo "test" > /home/vagrant/testfile
+$ sudo chown root:root /home/vagrant/testfile
+$ sudo chmod o=r /home/vagrant/testfile
 ```
 
 And add the following line to the `aa_qualifiers.sh` script:
@@ -852,7 +844,7 @@ profile @{APP_ROOT}/virtualenv/bin/gunicorn {
 
   # Python files and libs
   @{APP_ROOT}/__pycache__ r,
-  @{APP_ROOT}/__pycache__/**/ r,
+  @{APP_ROOT}/__pycache__/** wmr,
   @{APP_ROOT}/__pycache__/*.{py,pyc} mr,
   @{APP_ROOT}/*.{py,pyc} mr,
   @{APP_ROOT}/virtualenv/* r,
@@ -871,8 +863,9 @@ profile @{APP_ROOT}/virtualenv/bin/gunicorn {
   /etc/nsswitch.conf r,
   /etc/passwd r,
 
-  # List file descriptors
-  /proc/@{pid}/fd/ r,
+  # Read some process info
+  owner /proc/@{pid}/fd r,
+  owner /proc/@{pid}/mounts r,
 }
 ````
 
@@ -915,7 +908,7 @@ profile vulnerable @{APP_ROOT}/virtualenv/bin/gunicorn {
 
   # Python files and libs
   @{APP_ROOT}/__pycache__ r,
-  @{APP_ROOT}/__pycache__/**/ r,
+  @{APP_ROOT}/__pycache__/** wmr,
   @{APP_ROOT}/__pycache__/*.{py,pyc} mr,
   @{APP_ROOT}/*.{py,pyc} mr,
   @{APP_ROOT}/virtualenv/* r,
@@ -934,9 +927,9 @@ profile vulnerable @{APP_ROOT}/virtualenv/bin/gunicorn {
   audit /etc/passwd r,
   /etc/nsswitch.conf r,
 
-  # Reading process properties and resources
-  /proc/@{pid}/fd/ r,
-  /proc/@{pid}/mounts r,
+  # Read some process info
+  owner /proc/@{pid}/fd/ r,
+  owner /proc/@{pid}/mounts r,
 
   # Needed by ctypes to load native libraries in certain Python modules
   /{usr/bin/x86_64-linux-gnu-gcc-7,sbin/ldconfig,usr/bin/x86_64-linux-gnu-ld.bfd} Cx -> ctypes,
@@ -971,11 +964,11 @@ Sep 24 16:30:41 vagrant audit[24504]: AVC apparmor="DENIED" operation="open" pro
 so we can go ahead and add a new line allowing read access to the config file. If we read the source code carefully, we know that we will need it to have access to the HTML template files as well, so these are the two lines we need to add to load the page at `localhost:8080`:
 
 ```
-  # Reading configuration file
-  @{APP_ROOT}/config.prod.cfg r,
+ # Reading configuration file
+ @{APP_ROOT}/config.prod.cfg r,
 
-  # Reading template files
-  @{APP_ROOT}/templates/*.html r,
+ # Reading template files
+ @{APP_ROOT}/templates/*.html r,
 ```
 
 Now we can work our way further in the application following the logs, creating a child profile this time for ImageMagick. As we follow the logs, nothing should surprise us too much, but we should stick with following the audit logs - those never lie (e.g. it will show you real paths resolving all symbolic links and because they are from the running application, we are seeing the results corresponding to the current runtime environment)
@@ -994,51 +987,240 @@ profile imagemagick {
     /usr/local/lib/*.so* mr,
     # ImageMagick config files
     /usr/local/etc/ImageMagick-6/* r,
+    /usr/local/share/ImageMagick-6/* r,
     # User files (input and output)
     @{UPLOADS_DIR}/* r,
     @{RESULTS_DIR}/* rw,
 }
 ```
 
-Now with this updated profile, if we try out our application, it finally works perfectly! But what did we really accomplish here? Let's try to attack the app again with the ImageTragick payloads one by one and let's follow the logs in the meantime.
+Now with this updated profile, if we try out our application, it finally works perfectly! But what did we really accomplish here? Let's try to attack the app again with the ImageTragick payloads one by one and let's follow the logs in the meantime. Can we still exploit the vulnerabilities? 
+
+
+
+## Privilege separation using the AppArmor API
+
+Notice the following: in the parent profile, we could say that not all the privileges are needed by all parts of the program - certain permissions are only needed temporarily or only within some well-defined scope, e.g. a particular method. Namely:
+
+* Access to the configuration file is only needed once, before the first request is made - this should most certainly be leveraged since config files often contain secrets in real-world examples
+* Only the `index()` function needs to read the template files
+* Our app only needs to be able to run ImageMagick from the convert_user_file() method
+* Reading `/etc/passwd` and `/etc/nsswitch.conf` is really only needed by the gunicorn server during startup, otherwise we do not need it
+
+These are all opportunities to further restrict what our application can and cannot do in terms of syscalls throughout its lifecycle. If you think about, child profiles are already a way to kind of switch between sets of permissions, but what if we want to do this programatically, from within the application so that we can implement this level of control - often referred to as privilege separation?
+
+We can use the userspace AppArmor library  (`libapparmor`) .
+
+Let's quickly review `apparmor_utils.py` a Python utility library that makes it easy to use the AppArmor API: it basically provides 3 utilities:
+
+* the `sandbox` class is a context manager that can also be used as a function decorator in order to confine parts of the program in a special child profile, called "hat" - the difference between a hat and a (sub)profile is that the process is allowed to resume from a hat to its previous security context, so the parent profile, while this is not true for regular profiles
+* the `get_current_confinement` function can be used for debugging - it returns the current security context of the process - this one actually uses the low-level interface instead of utilizing libapparmor (the reason behind this has to do with the fact that the Python binding of libapparmor is created with code generation and it is not so perfect nor comfortable to use but in general, the procfs-based interactions should be avoided as this interface may be subject to breaking changes contrary to the C API)
+* `enter_confinement` is a convenience method to switch to a (sub)profile - this operation must be explicitly allowed by the parent profile, and as it was said earlier, this is a one-way translation unless explicitly allowed from the child profile as well to switch back
+
+Before moving on, we are going to go ahead and move a bunch of common permissions into our own abstraction that is shared amongs Gunicorn-based Python services, so let's create `/etc/apparmor.d/abstractions/gunicorn_app` (this file is available at: TODO)
+
+```
+#include <abstractions/python>
+
+# The app root DIRECTORY itself
+@{APP_ROOT}/ r,
+
+# Python files and libs
+@{APP_ROOT}/__pycache__ r,
+@{APP_ROOT}/__pycache__/** wmr,
+@{APP_ROOT}/*.{py,pyc} mr,
+@{APP_ROOT}/virtualenv/* r,
+@{APP_ROOT}/virtualenv/**/ r,
+@{APP_ROOT}/virtualenv/lib/**.{py,pyc} mr,
+@{APP_ROOT}/virtualenv/lib/python3.6/orig-prefix.txt r,
+
+# Gunicorn and Python
+@{APP_ROOT}/virtualenv/bin/gunicorn r,
+@{APP_ROOT}/virtualenv/bin/python3 ix,
+
+# Temporary file access
+/tmp/** rw,
+
+# Certain commands are executed in a shell by some modules, let's allow these guys
+/bin/dash Cx ->  shell_commands,
+
+# Reading process properties and resources
+owner /proc/@{pid}/fd/ r,
+owner /proc/@{pid}/mounts r,
+
+# Needed by ctypes to load native libraries in certain Python modules
+/{usr/bin/x86_64-linux-gnu-gcc-7,sbin/ldconfig,usr/bin/x86_64-linux-gnu-ld.bfd} Cx -> ctypes,
+
+profile shell_commands {
+  #include <abstractions/base>
+  /bin/dash mrix,
+  /bin/uname mrix, # Some modules execute uname to figure out the current OS instead of using os.uname...
+}
+
+profile ctypes {
+  #include <abstractions/base>
+  #include <abstractions/python>
+  /{usr/bin/x86_64-linux-gnu-gcc-7,sbin/ldconfig,sbin/ldconfig.real,usr/bin/x86_64-linux-gnu-ld.bfd} mrix,
+  /bin/dash mrix,
+  /usr/bin/x86_64-linux-gnu-objdump mrix,
+  /tmp/* wr,
+  /usr/lib/gcc/x86_64-linux-gnu/7/collect2 mrix,
+}
+```
 
 
 
 
 
-## Privilege separation using `aa_change_hat`
+----
 
 
 
-
-
-## Kernel hardening and what happens if we don't have it
-
+Privsep end result:
 
 
 
+```
+# /etc/apparmor.d/abstractions/vulnerable.imagemagick
+profile /usr/local/bin/convert {
+  #include <abstractions/base>
+  # convert cli
+  /usr/local/bin/convert mrix,
+  # ImageMagick shared libraries
+  /usr/local/lib/*.so* mr,
+  # ImageMagick config files
+  /usr/local/etc/ImageMagick-6/* r,
+  /usr/local/share/ImageMagick-6/* r,
+  # User files (input and output)
+  @{UPLOADS_DIR}/* r,
+  @{RESULTS_DIR}/* rw,
+}
 
-## Risks of not scrubbing the environment
+
+# /etc/apparmor.d/abstractions/gunicorn_app
+#include <abstractions/python>
+
+# The app root DIRECTORY itself
+@{APP_ROOT}/ r,
+
+# Python files and libs
+@{APP_ROOT}/__pycache__ r,
+@{APP_ROOT}/__pycache__/** wmr,
+@{APP_ROOT}/*.{py,pyc} mr,
+@{APP_ROOT}/virtualenv/* r,
+@{APP_ROOT}/virtualenv/**/ r,
+@{APP_ROOT}/virtualenv/lib/**.{py,pyc} mr,
+@{APP_ROOT}/virtualenv/lib/python3.6/orig-prefix.txt r,
+
+# Gunicorn and Python
+@{APP_ROOT}/virtualenv/bin/gunicorn r,
+@{APP_ROOT}/virtualenv/bin/python3 ix,
+
+# Temporary file access
+/tmp/** rw,
+
+# Certain commands are executed in a shell by some modules, let's allow these guys
+/bin/dash Cx ->  shell_commands,
+
+# Reading process properties and resources
+owner /proc/@{pid}/fd/ r,
+owner /proc/@{pid}/mounts r,
+
+# Needed by ctypes to load native libraries in certain Python modules
+/{usr/bin/x86_64-linux-gnu-gcc-7,sbin/ldconfig,usr/bin/x86_64-linux-gnu-ld.bfd} Cx -> ctypes,
+
+profile shell_commands {
+  #include <abstractions/base>
+  /bin/dash mrix,
+  /bin/uname mrix, # Some modules execute uname to figure out the current OS instead of using os.uname...
+}
+
+profile ctypes {
+  #include <abstractions/base>
+  #include <abstractions/python>
+  /{usr/bin/x86_64-linux-gnu-gcc-7,sbin/ldconfig,sbin/ldconfig.real,usr/bin/x86_64-linux-gnu-ld.bfd} mrix,
+  /bin/dash mrix,
+  /usr/bin/x86_64-linux-gnu-objdump mrix,
+  /tmp/* wr,
+  /usr/lib/gcc/x86_64-linux-gnu/7/collect2 mrix,
+}
+
+
+# /etc/apparmor.d/vagrant.vulnerable-web-app.virtualenv.bin.gunicorn
+#include <tunables/global>
+#include <tunables/sys>
+
+@{APP_ROOT} = /vagrant/vulnerable-web-app
+@{UPLOADS_DIR} = /tmp/bsideslux18/uploads/
+@{RESULTS_DIR} = /tmp/bsideslux18/converted/
+@{PARENT_PROFILE} = vulnerable
+
+profile vulnerable @{APP_ROOT}/virtualenv/bin/gunicorn {
+  #include <abstractions/base>
+  #include <abstractions/apparmor_api>
+  #include <abstractions/gunicorn_app>
+
+  # Dynamic linker
+  /lib/x86_64-linux-gnu/ld-*.so mr,
+
+  # Networking
+  network inet tcp,
+
+  # Reading the user database
+  /etc/passwd r,
+  /etc/nsswitch.conf r,
+
+  change_profile -> @{PARENT_PROFILE}//needs_config_file_access,
+  change_profile -> @{PARENT_PROFILE}//needs_html_templates,
+  change_profile -> @{PARENT_PROFILE}//needs_imagemagick,
+}
+
+profile @{PARENT_PROFILE}//needs_config_file_access {
+    change_profile -> @{PARENT_PROFILE},
+    #include <abstractions/base>
+    #include <abstractions/gunicorn_app>
+    #include <abstractions/apparmor_api>
+    # Reading configuration file
+    @{APP_ROOT}/config.prod.cfg r,
+}
+
+profile @{PARENT_PROFILE}//needs_html_templates {
+    change_profile -> @{PARENT_PROFILE},
+    # Reading template files
+    #include <abstractions/base>
+    #include <abstractions/gunicorn_app>
+    #include <abstractions/apparmor_api>
+    @{APP_ROOT}/templates/*.html r,
+}
+
+profile @{PARENT_PROFILE}//needs_imagemagick {
+    change_profile -> @{PARENT_PROFILE},
+    #include <abstractions/base>
+    #include <abstractions/gunicorn_app>
+    #include <abstractions/apparmor_api>
+    #include <abstractions/vulnerable.imagemagick>
+    # Run imagemagick to convert stuff
+    /usr/local/bin/convert Cx,
+}
+```
 
 
 
-
-
-## Application-initiated confinement (or `aa_change_profile`)
-
-
-
-## Some bypass routes
+## Dangers
 
 
 
 TODO: 
 
+* improper kernel hardening
+
 * cap_sys_module
+* ptrace
+* rename problem
 * writes to /etc/cron.d/** or ~/.bashrc etc.
-* 
+* abstractions: nameservice
+* the systemd restart problem
 
 
 
 
-## Next steps
