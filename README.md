@@ -1206,21 +1206,13 @@ profile @{PARENT_PROFILE}//needs_imagemagick {
 
 
 
-## Dangers
+## Bypasses and privilege escalations
 
+Let's quickly see that it's not very difficult to write vulnerable profiles.
 
-
-TODO: 
-
-* improper kernel hardening
-
-* cap_sys_module
-* ptrace
-* rename problem
-* writes to /etc/cron.d/** or ~/.bashrc etc.
-* abstractions: nameservice
-* the systemd restart problem
-
-
-
+* rename_problem + demo with caveats/rename_problem.c
+* writes to `cron.d/*` files
+* `sys_ptrace` + injection (`/proc/sys/kernel/yama/ptrace_scope` and  write to `/proc/<pid>/mem`)
+* writes to `/proc/<pid>/attr/current` - changing AppArmor profile
+* `cap_sys_module` and several other capability rules
 

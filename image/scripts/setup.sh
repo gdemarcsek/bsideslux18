@@ -69,6 +69,9 @@ cd /home/vagrant
 git clone "https://github.com/ImageTragick/PoCs.git" .imagetragick
 chown -R vagrant:vagrant .imagetragick
 
+# Generate SSH key
+sudo -u vagrant ssh-keygen -t rsa -b 4096 -P lollollol -f /home/vagrant/.ssh/id_rsa
+
 # More cleanup
 apt autoremove
 dd if=/dev/zero of=/EMPTY bs=1M
