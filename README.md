@@ -1,6 +1,6 @@
 # Introduction
 
-<See slides>
+This is the repository of my AppArmor workshop at BSides Luxembourg 2018
 
 
 
