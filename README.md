@@ -14,7 +14,7 @@
 Follow the download link to get the Vagrant box and install it:
 
 ```
-$ vagrant box add --name bsideslux18/apparmor virtualbox-gdemarcs-bsideslux18.box
+$ vagrant box add --force --name bsideslux18/apparmor virtualbox-gdemarcs-bsideslux18.box
 ```
 
 
@@ -186,17 +186,16 @@ $ ./aa_hello_world
 getpwuid: Permission denied
 ```
 
-[EXTRA-EXPLANATION]
-
-Now let's see what is happening under the hood:
+AppArmor is preventing our process form making certain syscalls. Let's see why using `strace`:
 
 
 ```
+$ strace ./aa_hello_world 2>&1 | grep EACCES
 openat(AT_FDCWD, "/etc/passwd", O_RDONLY|O_CLOEXEC) = -1 EACCES (Permission denied)
 openat(AT_FDCWD, "/etc/passwd", O_RDONLY|O_CLOEXEC) = -1 EACCES (Permission denied)
 ```
 
-[EXTRA-EXPLANATION]
+Since the confinement model dictates deny by default for profiles in enforcement mode and our profile does not specify any allowed permissions for these files, AppArmor prevents the syscall from propagation. 
 
 Let's try running it as root, after all, root is above all mortal souls in Linux:
 
@@ -205,9 +204,11 @@ $ sudo ./aa_hello_world
 getpwuid: Permission denied
 ```
 
-[EXTRA-EXPLANATION]
+AppArmor enforces the policy for the root user too.
 
-Now let's fix the AppArmor profile:
+
+
+Now let's fix the AppArmor profile - we want it to allow all legal actions of our applications:
 
 ```
 # Last Modified: Mon Sep  3 21:31:29 2018
@@ -235,7 +236,7 @@ Then try running the program again: `./aa_hello_world`.
 You can fix a profile while the confined process is running - you do not have to restart it. Try changing the previous program to print the home directory in an infinite loop with some sleep. Then break the profile and make sure it is in enforce mode. (You will need to terminals for this or a screen session).
 
 ```c
-// aa_hello_world.c
+// aa_hello_world_2.c
 #include <string.h>
 #include <errno.h>
 #include <stdio.h>
@@ -249,11 +250,10 @@ int main(int argc, char **argv) {
         struct passwd *ent = getpwuid(current_uid);
         if (ent == NULL) {
             perror("getpwuid");
-            continue;
+        } else {
+        	printf("Home directory: %s\n", ent->pw_dir);
         }
-
-        printf("Home directory: %s\n", ent->pw_dir);
-        sleep(10);
+        sleep(5);
     }
     return EXIT_SUCCESS;
 }
@@ -266,6 +266,8 @@ $ sudo apparmor_parser -r /etc/apparmor.d/vagrant.aa_hello_world
 ```
 
 to reload the policy into the kernel, the process will start to work again without a restart. This can be quite useful with for example, large Java services like Jenkins or Confluence where the cost of a restart is significant. This also applies to switching between confinement modes, so you don't have to restart the service to start enforcing a policy. 
+
+
 
 On the other hand, there is a catch: a profile must be loaded into the kernel before the process it tries to confine is started. We can try this in practice, let's stop our program and unload its profile from the kernel by running:
 
@@ -290,14 +292,26 @@ Checking only access denied events:
 sudo journalctl --since yesterday -a _TRANSPORT=audit --no-pager | aa-decode | grep AVC | grep 'apparmor="DENIED"'
 ```
 
-[EXTRA-EXPLANATION]
+Interpretation:
+
+* `apparmor`: Indicates the AppArmor event type (DENIED - access denial, ALLOWED - permission granted, STATUS - profile operations)
+* `operation`: Indicates the intercepted syscall
+* `profile`: The profile in which the process that made the syscall was confined within at the time of the call
+* `name`: Name of the requested resource (e.g. filename)
+* `pid`: Process ID of the caller process
+* `comm`: Command line of the caller process
+* `requested_mask`: The list of requested access rights
+* `denied_mask`: The list of denied access rights (according to policy - not affected by confinement mode)
+* `fsuid`: fsuid of the caller program
+* `ouid`: Owner UID of the requested object
+
+
 
 Checking status events
+
 ```
 sudo journalctl --since yesterday -a _TRANSPORT=audit --no-pager | aa-decode | grep AVC | grep 'apparmor="STATUS"'
 ```
-
-[EXTRA-EXPLANATION]
 
 You might think that having auditd running, you will be able to use ausearch to find AppArmor events, but unfortunately ausearch just cannot handle the AVC message type for AppArmor for some mysterious reason - this is a bug that has been present for a long time:
 
@@ -324,9 +338,14 @@ $ tree -d /etc/apparmor.d
     └── xdg-user-dirs.d
 ```
 
-[EXTRA-EXPLANATION]
+* abstractions: Collection of re-usable policy statements that provide a common set of rights for abstract program types
+* tunables: Contains variable definitions
+* cache: Cache of compiled profiles
+* disable: Init script will disable profiles symlinked here
+* force-complain: Init script will put profiles symlinked here into complain mode
 
 ## Easy profile generation with `aa-logprof / aa-genprof`
+
 This time, we are going to confine a shell script with AppArmor:
 
 ```
@@ -356,8 +375,6 @@ $ ./aa_hello_world.sh
 ./aa_hello_world.sh: line 5: /bin/nc: Permission denied
 ./aa_hello_world.sh: line 5: /bin/cat: Permission denied
 ```
-
-[EXTRA-EXPLANATION]
 
 Let's fix it using `aa-genprof`. First of all, let's put the profile back into complain mode:
 
@@ -472,6 +489,12 @@ Resulting in a raw profile:
 
 *Explanation*:
 
+
+
+—— Extra content (it may not be included in the live workshop) -----
+
+
+
 What the heck is `/lib/x86_64-linux-gnu/ld-*.so mr` for?  That's the dynamic linker, but then we should see some open and mmap calls to it then when we invoke a dynamically linked executable, right?
 
 ```
@@ -540,13 +563,16 @@ As we can see, the script works again as expected.
 
 
 
+—— Enf Of Extra content (it may not be included in the live workshop) -----
+
+
+
 ## Using rule qualifiers
 
 Let's create a profile that:
 
-* Allows to read any files in home directories owned by the current user, except for SSH keys and configs (files under ~/.ssh)
-* It allows the use of networking, but it will enforce auditing network-related syscalls
-* Execute any other program with the same profile
+* Allows to read any user-owned files in vagrant's home, except for SSH keys and configs (files under ~/.ssh)
+* Allows the execution any other program with the same profile but with auditing enforced
 
 
 
@@ -574,20 +600,14 @@ We are going to do this together line by line of course, but the resulting profi
   /vagrant/aa_qualifiers.sh r,
   /lib/x86_64-linux-gnu/ld-*.so mr,
 
-  owner /home/vagrant/ r,	# the vagrant home dir itself
   owner /home/vagrant/** r,	# all files and dirs within the home dir
-
-  deny /home/vagrant/.ssh r,	 # deny read to the .ssh directory itself
   deny /home/vagrant/.ssh/** r,  # deny read to all files and dirs within
 
-  audit network, # audit all network access requests
-  /** ix, # allow running any other program with the same confinement
+  audit /** ix, # allow running any other program with the same confinement
 }
 ```
 
 Running the script we should see error messages when it is trying to read the `authorized_keys` file, thanks to the `deny` qualifier:
-
-
 
 ```
 $ /usr/bin/head: cannot open '/home/vagrant/.ssh/authorized_keys' for reading: Permission denied
@@ -613,25 +633,7 @@ If we try to run again, we should see the following error message in the very en
 /usr/bin/head: cannot open '/home/vagrant/testfile' for reading: Permission denied
 ```
 
-The `owner` qualifier only lets the program read the files that are owned by the same fsuid.
-
-
-
-We can inspect the audit records of the network operations attempted by `nc`:
-
-```
-$ sudo journalctl --since yesterday -a _TRANSPORT=audit --no-pager | aa-decode | grep AVC | grep 'apparmor="AUDIT"
-Sep 12 16:26:31 vagrant audit[1349]: AVC apparmor="AUDIT" operation="create" profile="/home/vagrant/aa_qualifiers.sh" pid=1349 comm="nc" family="unix" sock_type="stream" protocol=0 requested_mask="create" addr=none
-Sep 12 16:26:31 vagrant audit[1349]: AVC apparmor="AUDIT" operation="create" profile="/home/vagrant/aa_qualifiers.sh" pid=1349 comm="nc" family="inet" sock_type="stream" protocol=6 requested_mask="create"
-Sep 12 16:26:31 vagrant audit[1349]: AVC apparmor="AUDIT" operation="connect" profile="/home/vagrant/aa_qualifiers.sh" pid=1349 comm="nc" family="inet" sock_type="stream" protocol=6 requested_mask="connect"
-Sep 12 16:26:31 vagrant audit[1349]: AVC apparmor="AUDIT" operation="getsockopt" profile="/home/vagrant/aa_qualifiers.sh" pid=1349 comm="nc" laddr=127.0.0.1 lport=53468 faddr=127.0.0.1 fport=80 family="inet" sock_type="stream" protocol=6 requested_mask="getopt"
-Sep 12 16:30:53 vagrant audit[8078]: AVC apparmor="AUDIT" operation="create" profile="/home/vagrant/aa_qualifiers.sh" pid=8078 comm="nc" family="unix" sock_type="stream" protocol=0 requested_mask="create" addr=none
-Sep 12 16:30:53 vagrant audit[8078]: AVC apparmor="AUDIT" operation="create" profile="/home/vagrant/aa_qualifiers.sh" pid=8078 comm="nc" family="unix" sock_type="stream" protocol=0 requested_mask="create" addr=none
-Sep 12 16:30:53 vagrant audit[8078]: AVC apparmor="AUDIT" operation="create" profile="/home/vagrant/aa_qualifiers.sh" pid=8078 comm="nc" family="inet" sock_type="stream" protocol=6 requested_mask="create"
-Sep 12 16:30:53 vagrant audit[8078]: AVC apparmor="AUDIT" operation="connect" profile="/home/vagrant/aa_qualifiers.sh" pid=8078 comm="nc" family="inet" sock_type="stream" protocol=6 requested_mask="connect"
-Sep 12 16:30:53 vagrant audit[8078]: AVC apparmor="AUDIT" operation="getsockopt" profile="/home/vagrant/aa_qualifiers.sh" pid=8078 comm="nc" laddr=127.0.0.1 lport=53470 faddr=127.0.0.1 fport=80 family="inet" sock_type="stream" protocol=6 requested_mask="getopt"
-...
-```
+The `owner` qualifier only lets the program read the files that are owned by the same fsuid (oid=fsuid). If we ran the script as root <--- I might have discovered an AppArmor bug here: TODO look into this!!!!
 
 
 
@@ -711,7 +713,7 @@ This will allow our process to read and map common Python libraries. Additionall
 
 Before moving on, we should have a profile like this:
 
-
+(this file is located in here: gunicorn_initial_profile)
 
 ```
 # Last Modified: Sat Sep 15 09:40:15 2018
@@ -719,7 +721,7 @@ Before moving on, we should have a profile like this:
 
 @{APP_ROOT} = /vagrant/vulnerable-web-app
 
-profile @{APP_ROOT}/virtualenv/bin/gunicorn {
+profile vulnerable @{APP_ROOT}/virtualenv/bin/gunicorn {
   #include <abstractions/base>
   #include <abstractions/python>
 
@@ -828,7 +830,7 @@ Having that said, the final profile that enables us to at least successfully sta
 
 @{APP_ROOT} = /vagrant/vulnerable-web-app
 
-profile @{APP_ROOT}/virtualenv/bin/gunicorn {
+profile vulnerable @{APP_ROOT}/virtualenv/bin/gunicorn {
   #include <abstractions/base>
   #include <abstractions/python>
 
