@@ -35,7 +35,7 @@ apt install apparmor \
             python-apparmor \
             build-essential \
             python-pip \
-            python3-distutils screen \
+            python3-distutils screen tmux \
             librsvg2-2 librsvg2-dev librsvg2-bin \
             libpng16-16 libpng-dev libpng-tools \
             libjpeg-dev \
