@@ -20,7 +20,7 @@ def load_config():
     app.config.from_pyfile(os.path.join(base_dir, 'config.prod.cfg'))
 
 @app.before_first_request
-@sandbox("needs_config_file_access")
+#@sandbox("needs_config_file_access")
 def app_setup():
     print("[*] Loading config...")
     load_config()
@@ -32,7 +32,7 @@ def allowed_file(filename):
            filename.rsplit('.', 1)[1] in app.config['ALLOWED_EXTENSIONS']
 
 @app.route('/')
-@sandbox("needs_html_templates")
+#@sandbox("needs_html_templates")
 def index():
     return render_template('index.html')
 
@@ -47,7 +47,7 @@ def save_user_file(ufile):
 
     return input_file_path, output_file_path
 
-@sandbox("needs_imagemagick")
+#@sandbox("needs_imagemagick")
 def convert_user_file(input_path, output_path, scale_param):
     command = ["convert", input_path, "-resize", scale_param, output_path]
     convert_result = subprocess.call(command)
