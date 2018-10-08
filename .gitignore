@@ -4,3 +4,13 @@ aa_hello_world
 .vagrant/
 .DS_Store
 vulnerable-web-app/you-are-owned
+caveats/.tmp_versions
+caveats/*.o
+caveats/*.cmd
+caveats/*.ko
+caveats/*.mk
+caveats/*.symvers
+caveats/*.order
+caveats/*.mod.c
+caveats/rename_problem
+

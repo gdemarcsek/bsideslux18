@@ -53,19 +53,15 @@ $ packer build workshop.json
 
 # Lab tasks
 
-## Checking the kernel module
+## Checking confinement status
+
 ```
-$ cat /sys/module/apparmor/parameters/enabled
+$ sudo aa-status
 ```
 
 ## Making sure AppArmor is started at boot
 ```
 $ sudo systemctl enable apparmor
-```
-
-## Checking confinement status
-```
-$ sudo aa-status
 ```
 
 ## Logging with auditd
@@ -563,7 +559,7 @@ As we can see, the script works again as expected.
 
 
 
-—— Enf Of Extra content (it may not be included in the live workshop) -----
+—— End Of Extra content (it may not be included in the live workshop) -----
 
 
 
@@ -888,6 +884,7 @@ We might wonder why our program needs to execute `ld`, `gcc` and `ldconfig` - we
 
 
 ```
+## SNIPPET-python-ecosystem
 # Last Modified: Sat Sep 15 09:40:15 2018
 #include <tunables/global>
 
@@ -1083,6 +1080,7 @@ Privsep end result:
 
 
 ```
+# SNIPPET-privsep-final
 # /etc/apparmor.d/abstractions/vulnerable.imagemagick
 profile /usr/local/bin/convert {
   #include <abstractions/base>
