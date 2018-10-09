@@ -879,7 +879,64 @@ Sep 22 20:10:01 vagrant audit[3973]: AVC apparmor="DENIED" operation="exec" prof
 Sep 22 20:10:01 vagrant audit[3972]: AVC apparmor="DENIED" operation="exec" profile="/vagrant/vulnerable-web-app/virtualenv/bin/gunicorn" name="/usr/bin/x86_64-linux-gnu-ld.bfd" pid=3972 comm="gunicorn" requested_mask="x" denied_mask="x" fsuid=900 ouid=0
 ```
 
-We might wonder why our program needs to execute `ld`, `gcc` and `ldconfig` - well, it is mainly because we are using CPython where a significant part of Python modules use C libraries via the `ctype` Python module - which uses these executables to locate loadable shared libraries. Now while often times, well written modules will fall back to Python implementations when a native library is not found, unfortunately we cannot really on that generally, so we are going to have to include permissions to execute these binaries - although it would make sense to create a child profile for them. By the. time we go throw all the things needed by the Python ecosystem, we should end up with this profile:
+We might wonder why our program needs to execute `ld`, `gcc` and `ldconfig` - well, it is mainly because we are using CPython where a significant part of Python modules use C libraries via the `ctype` Python module - which uses these executables to locate loadable shared libraries. Now while often times, well written modules will fall back to Python implementations when a native library is not found, unfortunately we cannot really on that generally, so we are going to have to include permissions to execute these binaries - although it would make sense to create a child profile for them. 
+
+
+
+ADDITIONAL-CONTENT
+
+Native extensions use ldconfig:
+
+```
+$ strace -f -e execve python
+execve("/vagrant/vulnerable-web-app/virtualenv/bin/python", ["python"], 0x7ffdf49f3a38 /* 109 vars */) = 0
+Python 3.6.5 (default, Apr  1 2018, 05:46:30)
+[GCC 7.3.0] on linux
+Type "help", "copyright", "credits" or "license" for more information.
+>>> import ctypes.util
+>>> ctypes.util.find_library("c")
+strace: Process 12642 attached
+[pid 12642] execve("/sbin/ldconfig", ["/sbin/ldconfig", "-p"], 0x7fd2db080900 /* 2 vars */) = 0
+[pid 12642] execve("/sbin/ldconfig.real", ["/sbin/ldconfig.real", "-p"], 0x55e199808bd0 /* 3 vars */) = 0
+[pid 12642] +++ exited with 0 +++
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=12642, si_uid=900, si_status=0, si_utime=0, si_stime=0} ---
+'libc.so.6'
+>>> quit()
++++ exited with 0 +++
+```
+
+The `requests` package runs `uname` in a shell to identify the OS:
+
+```
+$ strace -f -e execve python
+execve("/vagrant/vulnerable-web-app/virtualenv/bin/python", ["python"], 0x7fffdea4e518 /* 109 vars */) = 0
+Python 3.6.5 (default, Apr  1 2018, 05:46:30)
+[GCC 7.3.0] on linux
+Type "help", "copyright", "credits" or "license" for more information.
+>>> import requests
+strace: Process 20726 attached
+[pid 20726] execve("/sbin/ldconfig", ["/sbin/ldconfig", "-p"], 0x7fbefe993ca8 /* 2 vars */) = 0
+[pid 20726] execve("/sbin/ldconfig.real", ["/sbin/ldconfig.real", "-p"], 0x55a705863bd0 /* 3 vars */) = 0
+[pid 20726] +++ exited with 0 +++
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=20726, si_uid=900, si_status=0, si_utime=0, si_stime=0} ---
+strace: Process 20727 attached
+[pid 20727] execve("/bin/sh", ["/bin/sh", "-c", "uname -p 2> /dev/null"], 0x1f6aac0 /* 111 vars */) = 0
+strace: Process 20728 attached
+[pid 20728] execve("/bin/uname", ["uname", "-p"], 0x555d612fd8f8 /* 111 vars */) = 0
+[pid 20728] +++ exited with 0 +++
+[pid 20727] --- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=20728, si_uid=900, si_status=0, si_utime=0, si_stime=0} ---
+[pid 20727] +++ exited with 0 +++
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=20727, si_uid=900, si_status=0, si_utime=0, si_stime=0} ---
+>>>
+```
+
+
+
+—— End Of Additional Content ---
+
+
+
+By the. time we go through all the things needed by the Python ecosystem, we should end up with this profile:
 
 
 
@@ -975,6 +1032,7 @@ Now we can work our way further in the application following the logs, creating 
 
 
 ```
+# SNIPPET-imagemagick-subprofile
 @{UPLOADS_DIR} = /tmp/bsideslux18/uploads/
 @{RESULTS_DIR} = /tmp/bsideslux18/converted/
 /usr/local/bin/convert Cx -> imagemagick,
@@ -1146,7 +1204,7 @@ profile ctypes {
 }
 
 
-# /etc/apparmor.d/vagrant.vulnerable-web-app.virtualenv.bin.gunicorn
+# /etc/apparmor.d/vulnerable
 #include <tunables/global>
 #include <tunables/sys>
 

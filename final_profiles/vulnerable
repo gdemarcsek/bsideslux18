@@ -1,0 +1,56 @@
+#include <tunables/global>
+#include <tunables/sys>
+
+@{APP_ROOT} = /vagrant/vulnerable-web-app
+@{UPLOADS_DIR} = /tmp/bsideslux18/uploads/
+@{RESULTS_DIR} = /tmp/bsideslux18/converted/
+@{PARENT_PROFILE} = vulnerable
+
+profile vulnerable @{APP_ROOT}/virtualenv/bin/gunicorn {
+  #include <abstractions/base>
+  #include <abstractions/apparmor_api>
+  #include <abstractions/gunicorn_app>
+
+  # Dynamic linker
+  /lib/x86_64-linux-gnu/ld-*.so mr,
+
+  # Networking
+  network inet tcp,
+
+  # Reading the user database
+  /etc/passwd r,
+  /etc/nsswitch.conf r,
+
+  change_profile -> @{PARENT_PROFILE}//needs_config_file_access,
+  change_profile -> @{PARENT_PROFILE}//needs_html_templates,
+  change_profile -> @{PARENT_PROFILE}//needs_imagemagick,
+}
+
+profile @{PARENT_PROFILE}//needs_config_file_access {
+    change_profile -> @{PARENT_PROFILE},
+    #include <abstractions/base>
+    #include <abstractions/gunicorn_app>
+    #include <abstractions/apparmor_api>
+    # Reading configuration file
+    @{APP_ROOT}/config.prod.cfg r,
+}
+
+profile @{PARENT_PROFILE}//needs_html_templates {
+    change_profile -> @{PARENT_PROFILE},
+    # Reading template files
+    #include <abstractions/base>
+    #include <abstractions/gunicorn_app>
+    #include <abstractions/apparmor_api>
+    @{APP_ROOT}/templates/*.html r,
+}
+
+profile @{PARENT_PROFILE}//needs_imagemagick {
+    change_profile -> @{PARENT_PROFILE},
+    #include <abstractions/base>
+    #include <abstractions/gunicorn_app>
+    #include <abstractions/apparmor_api>
+    #include <abstractions/vulnerable.imagemagick>
+    # Run imagemagick to convert stuff
+    /usr/local/bin/convert Cx,
+}
+

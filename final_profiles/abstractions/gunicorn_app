@@ -1,0 +1,47 @@
+#include <abstractions/python>
+
+# The app root DIRECTORY itself
+@{APP_ROOT}/ r,
+
+# Python files and libs
+@{APP_ROOT}/__pycache__ r,
+@{APP_ROOT}/__pycache__/** wmr,
+@{APP_ROOT}/*.{py,pyc} mr,
+@{APP_ROOT}/virtualenv/* r,
+@{APP_ROOT}/virtualenv/**/ r,
+@{APP_ROOT}/virtualenv/lib/**.{py,pyc} mr,
+@{APP_ROOT}/virtualenv/lib/python3.6/orig-prefix.txt r,
+
+# Gunicorn and Python
+@{APP_ROOT}/virtualenv/bin/gunicorn r,
+@{APP_ROOT}/virtualenv/bin/python3 ix,
+
+# Temporary file access
+/tmp/** rw,
+
+# Certain commands are executed in a shell by some modules, let's allow these guys
+/bin/dash Cx ->  shell_commands,
+
+# Reading process properties and resources
+owner /proc/@{pid}/fd/ r,
+owner /proc/@{pid}/mounts r,
+
+# Needed by ctypes to load native libraries in certain Python modules
+/{usr/bin/x86_64-linux-gnu-gcc-7,sbin/ldconfig,usr/bin/x86_64-linux-gnu-ld.bfd} Cx -> ctypes,
+
+profile shell_commands {
+  #include <abstractions/base>
+  /bin/dash mrix,
+  /bin/uname mrix, # Some modules execute uname to figure out the current OS instead of using os.uname...
+}
+
+profile ctypes {
+  #include <abstractions/base>
+  #include <abstractions/python>
+  /{usr/bin/x86_64-linux-gnu-gcc-7,sbin/ldconfig,sbin/ldconfig.real,usr/bin/x86_64-linux-gnu-ld.bfd} mrix,
+  /bin/dash mrix,
+  /usr/bin/x86_64-linux-gnu-objdump mrix,
+  /tmp/* wr,
+  /usr/lib/gcc/x86_64-linux-gnu/7/collect2 mrix,
+}
+

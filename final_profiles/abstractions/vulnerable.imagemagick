@@ -1,0 +1,14 @@
+profile /usr/local/bin/convert {
+  #include <abstractions/base>
+  # convert cli
+  /usr/local/bin/convert mrix,
+  # ImageMagick shared libraries
+  /usr/local/lib/*.so* mr,
+  # ImageMagick config files
+  /usr/local/etc/ImageMagick-6/* r,
+  /usr/local/share/ImageMagick-6/* r,
+  # User files (input and output)
+  @{UPLOADS_DIR}/* r,
+  @{RESULTS_DIR}/* rw,
+}
+
