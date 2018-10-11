@@ -483,11 +483,11 @@ Resulting in a raw profile:
 
 ```
 
-*Explanation*:
 
 
+OPTIONAL-CONTENT
 
-—— Extra content (it may not be included in the live workshop) -----
+----
 
 
 
@@ -557,9 +557,9 @@ $ cat /tmp/wlog.*
 
 As we can see, the script works again as expected.
 
+---
 
 
-—— End Of Extra content (it may not be included in the live workshop) -----
 
 
 
@@ -662,8 +662,6 @@ Now as we can see our little web service is quite simple and looks pretty much s
 
 
 So let's quickly try our a few scenarios, just to prove that the vulnerabilities are really there:
-
-
 
 ```
 payloads/rce.jpg - Execute arbitrary command (the file you-are-owned will appear)
@@ -807,7 +805,7 @@ Sep 15 12:37:09 vagrant audit[21265]: AVC apparmor="DENIED" operation="mknod" pr
 So let's choose a temporary directory and provide write access to the files in it:
 
 ```
-/tmp/** w,
+/tmp/** rw,
 ```
 
 If we try the profile again, we will see that read access will also be required, so let's add the `r` permission as well.
@@ -883,7 +881,9 @@ We might wonder why our program needs to execute `ld`, `gcc` and `ldconfig` - we
 
 
 
-ADDITIONAL-CONTENT
+OPTIONAL-CONTENT
+
+---
 
 Native extensions use ldconfig:
 
@@ -930,9 +930,7 @@ strace: Process 20728 attached
 >>>
 ```
 
-
-
-—— End Of Additional Content ---
+----
 
 
 
@@ -954,64 +952,58 @@ profile vulnerable @{APP_ROOT}/virtualenv/bin/gunicorn {
 
   # Dynamic linker
   /lib/x86_64-linux-gnu/ld-*.so mr,
-
-  # The app root DIRECTORY itself
-  @{APP_ROOT}/ r,
-
-  # Gunicorn and Python
-  @{APP_ROOT}/virtualenv/bin/gunicorn r,
-  @{APP_ROOT}/virtualenv/bin/python3 ix,
-
-  # Python files and libs
-  @{APP_ROOT}/__pycache__ r,
-  @{APP_ROOT}/__pycache__/** wmr,
-  @{APP_ROOT}/__pycache__/*.{py,pyc} mr,
-  @{APP_ROOT}/*.{py,pyc} mr,
-  @{APP_ROOT}/virtualenv/* r,
-  @{APP_ROOT}/virtualenv/**/ r,
-  @{APP_ROOT}/virtualenv/lib/**.{py,pyc} mr,
-
-  @{APP_ROOT}/virtualenv/lib/python3.6/orig-prefix.txt r,
-
-  # Networking
-  audit network inet tcp,
-
-  # Temporary file access
-  /tmp/** rw,
-
+  
+  # Gunicorn app abstraction
+  #include <abstractions/gunicorn_app>
+  
   # Reading the user database
   audit /etc/passwd r,
   /etc/nsswitch.conf r,
-
-  # Read some process info
-  owner /proc/@{pid}/fd/ r,
-  owner /proc/@{pid}/mounts r,
-
-  # Needed by ctypes to load native libraries in certain Python modules
-  /{usr/bin/x86_64-linux-gnu-gcc-7,sbin/ldconfig,usr/bin/x86_64-linux-gnu-ld.bfd} Cx -> ctypes,
-
-  # Certain commands are executed in a shell by some modules, let's allow these guys
-  audit /bin/dash Cx ->  shell_commands,
-
-  profile shell_commands {
-    #include <abstractions/base>
-    /bin/dash mrix,
-    /bin/uname mrix, # Some modules execute uname to figure out the current OS instead of using os.uname...
-  }
-
-  profile ctypes {
-    #include <abstractions/base>
-    #include <abstractions/python>
-    /{usr/bin/x86_64-linux-gnu-gcc-7,sbin/ldconfig,sbin/ldconfig.real,usr/bin/x86_64-linux-gnu-ld.bfd} mrix,
-    /bin/dash mrix,
-    /usr/bin/x86_64-linux-gnu-objdump mrix,
-    /tmp/* wr,
-    /usr/lib/gcc/x86_64-linux-gnu/7/collect2 mrix,
-  }
 }
 ```
 
- Now if we make our first request, we will notice that the application fails to read its configuration file, e.g.:
+ We are creating our own abstraction here, as that part of the profile might be a good candidate for re-use in other applications. The contents of `abstractions/gunicorn_app` are as follows:
+
+```
+# The app root DIRECTORY itself
+@{APP_ROOT}/ r,
+
+# Gunicorn and Python
+@{APP_ROOT}/virtualenv/bin/gunicorn r,
+@{APP_ROOT}/virtualenv/bin/python3 ix,
+
+# Python files and libs
+@{APP_ROOT}/__pycache__ r,
+@{APP_ROOT}/__pycache__/** wmr,
+@{APP_ROOT}/__pycache__/*.{py,pyc} mr,
+@{APP_ROOT}/*.{py,pyc} mr,
+@{APP_ROOT}/virtualenv/* r,
+@{APP_ROOT}/virtualenv/**/ r,
+@{APP_ROOT}/virtualenv/lib/**.{py,pyc} mr,
+
+@{APP_ROOT}/virtualenv/lib/python3.6/orig-prefix.txt r,
+
+# Networking
+network inet tcp,
+
+# Temporary file access
+/tmp/** rw,
+
+# Read some process info
+owner /proc/@{pid}/fd/ r,
+owner /proc/@{pid}/mounts r,
+
+# Often needed by native extensions
+/bin/dash mrix,
+/bin/uname mrix, # Some modules execute uname to figure out the current OS instead of using os.uname...
+/{usr/bin/x86_64-linux-gnu-gcc-7,sbin/ldconfig,sbin/ldconfig.real,usr/bin/x86_64-linux-gnu-ld.bfd} mrix,
+/bin/dash mrix,
+/usr/bin/x86_64-linux-gnu-objdump mrix,
+/tmp/* wr,
+/usr/lib/gcc/x86_64-linux-gnu/7/collect2 mrix,
+```
+
+Now if we make our first request, we will notice that the application fails to read its configuration file, e.g.:
 
 ```
 Sep 24 16:30:41 vagrant audit[24504]: AVC apparmor="DENIED" operation="open" profile="vulnerable" name="/vagrant/vulnerable-web-app/config.prod.cfg" pid=24504 comm="gunicorn" requested_mask="r" denied_mask="r" fsuid=900 ouid=900
@@ -1027,9 +1019,7 @@ so we can go ahead and add a new line allowing read access to the config file. I
  @{APP_ROOT}/templates/*.html r,
 ```
 
-Now we can work our way further in the application following the logs, creating a child profile this time for ImageMagick. As we follow the logs, nothing should surprise us too much, but we should stick with following the audit logs - those never lie (e.g. it will show you real paths resolving all symbolic links and because they are from the running application, we are seeing the results corresponding to the current runtime environment)
-
-
+We can work our way further in the application following the logs, creating a child profile this time for ImageMagick. As we follow the logs, nothing should surprise us too much, but we should stick with following the audit logs - those never lie (e.g. it will show you real paths resolving all symbolic links and because they are from the running application, we are seeing the results corresponding to the current runtime environment)
 
 ```
 # SNIPPET-imagemagick-subprofile
@@ -1043,15 +1033,16 @@ profile imagemagick {
     # ImageMagick shared libraries
     /usr/local/lib/*.so* mr,
     # ImageMagick config files
-    /usr/local/etc/ImageMagick-6/* r,
-    /usr/local/share/ImageMagick-6/* r,
+    /usr/local/{etc,share}/ImageMagick-6/* r,
     # User files (input and output)
     @{UPLOADS_DIR}/* r,
     @{RESULTS_DIR}/* rw,
 }
 ```
 
-Now with this updated profile, if we try out our application, it finally works perfectly! But what did we really accomplish here? Let's try to attack the app again with the ImageTragick payloads one by one and let's follow the logs in the meantime. Can we still exploit the vulnerabilities? 
+The rule above specifies that the `convert` utility can be executed with environment scrubbing and the current profile must be changed to a child profile named `imagemagick` - should the child profile not exist, the profile transition and the command execution would fail.
+
+With this updated profile, if we try out our application, it finally works perfectly! But what did we really accomplish here? Let's try to attack the app again with the ImageTragick payloads one by one and let's follow the logs in the meantime. Can we still exploit the vulnerabilities? 
 
 
 
@@ -1070,141 +1061,20 @@ We can use the userspace AppArmor library  (`libapparmor`) .
 
 Let's quickly review `apparmor_utils.py` a Python utility library that makes it easy to use the AppArmor API: it basically provides 3 utilities:
 
-* the `sandbox` class is a context manager that can also be used as a function decorator in order to confine parts of the program in a special child profile, called "hat" - the difference between a hat and a (sub)profile is that the process is allowed to resume from a hat to its previous security context, so the parent profile, while this is not true for regular profiles
+* the `sandbox` class is a context manager that can also be used as a function decorator in order to confine parts of the program in a special child profile, called "hat" - the difference between a hat and a (sub)profile is that the process is allowed to resume from a hat to its previous security context, so the parent profile, while this is not true for regular profiles unless there is an explicit rule that allows transition back to the parent profile
 * the `get_current_confinement` function can be used for debugging - it returns the current security context of the process - this one actually uses the low-level interface instead of utilizing libapparmor (the reason behind this has to do with the fact that the Python binding of libapparmor is created with code generation and it is not so perfect nor comfortable to use but in general, the procfs-based interactions should be avoided as this interface may be subject to breaking changes contrary to the C API)
-* `enter_confinement` is a convenience method to switch to a (sub)profile - this operation must be explicitly allowed by the parent profile, and as it was said earlier, this is a one-way translation unless explicitly allowed from the child profile as well to switch back
+* `enter_confinement` is a convenience method to switch to a (sub)profile - this operation must be explicitly allowed by the parent profile, and as it was said earlier, this is a one-way translation unless explicitly allowed from the child profile as well to switch back. This method always uses `aa_change_profile` instead of `aa_change_hat` - the former is allowed for unconfined applications, but the latter is not. This also means that applications can initiate their own confinement using this method when they start by knowing their profile's name - which means that confinement no longer has to depend on matching the application executable's path to the profile attachment! That's pretty great because it makes it virtually impossible for the application to start unconfined! You can check this by uncommenting the call to `enter_confinement("vulnerable")` and removing the path attachment from the profile description (changing `profile vulnerable @{APP_ROOT}/virtualenv/bin/gunicorn {` to just `profile vulnerable {`).
 
-Before moving on, we are going to go ahead and move a bunch of common permissions into our own abstraction that is shared amongs Gunicorn-based Python services, so let's create `/etc/apparmor.d/abstractions/gunicorn_app` (this file is available at: TODO)
-
-```
-#include <abstractions/python>
-
-# The app root DIRECTORY itself
-@{APP_ROOT}/ r,
-
-# Python files and libs
-@{APP_ROOT}/__pycache__ r,
-@{APP_ROOT}/__pycache__/** wmr,
-@{APP_ROOT}/*.{py,pyc} mr,
-@{APP_ROOT}/virtualenv/* r,
-@{APP_ROOT}/virtualenv/**/ r,
-@{APP_ROOT}/virtualenv/lib/**.{py,pyc} mr,
-@{APP_ROOT}/virtualenv/lib/python3.6/orig-prefix.txt r,
-
-# Gunicorn and Python
-@{APP_ROOT}/virtualenv/bin/gunicorn r,
-@{APP_ROOT}/virtualenv/bin/python3 ix,
-
-# Temporary file access
-/tmp/** rw,
-
-# Certain commands are executed in a shell by some modules, let's allow these guys
-/bin/dash Cx ->  shell_commands,
-
-# Reading process properties and resources
-owner /proc/@{pid}/fd/ r,
-owner /proc/@{pid}/mounts r,
-
-# Needed by ctypes to load native libraries in certain Python modules
-/{usr/bin/x86_64-linux-gnu-gcc-7,sbin/ldconfig,usr/bin/x86_64-linux-gnu-ld.bfd} Cx -> ctypes,
-
-profile shell_commands {
-  #include <abstractions/base>
-  /bin/dash mrix,
-  /bin/uname mrix, # Some modules execute uname to figure out the current OS instead of using os.uname...
-}
-
-profile ctypes {
-  #include <abstractions/base>
-  #include <abstractions/python>
-  /{usr/bin/x86_64-linux-gnu-gcc-7,sbin/ldconfig,sbin/ldconfig.real,usr/bin/x86_64-linux-gnu-ld.bfd} mrix,
-  /bin/dash mrix,
-  /usr/bin/x86_64-linux-gnu-objdump mrix,
-  /tmp/* wr,
-  /usr/lib/gcc/x86_64-linux-gnu/7/collect2 mrix,
-}
-```
+(A note on nesting profiles: in principle, it is allowed to nest multiple subprofiles - the kernel component should definitely support it by now, however, this doesn't help us too much because the userspace APIs and tools do not fully support this feature. This is possible because the AppArmor profile language is just an intermediate language - in fact the kernel uses a compiled, binary version of the profiles internally. Howeber, `apparmor_parser` may not support all features of the internal language yet. Anyways, do not count on nesting subprofiles just yet, at least this is my experience.)
 
 
 
-
-
-----
-
-
-
-Privsep end result:
+Let's uncomment the decorators from the endpoints in `application,py` and tranform our profile to the following:
 
 
 
 ```
 # SNIPPET-privsep-final
-# /etc/apparmor.d/abstractions/vulnerable.imagemagick
-profile /usr/local/bin/convert {
-  #include <abstractions/base>
-  # convert cli
-  /usr/local/bin/convert mrix,
-  # ImageMagick shared libraries
-  /usr/local/lib/*.so* mr,
-  # ImageMagick config files
-  /usr/local/etc/ImageMagick-6/* r,
-  /usr/local/share/ImageMagick-6/* r,
-  # User files (input and output)
-  @{UPLOADS_DIR}/* r,
-  @{RESULTS_DIR}/* rw,
-}
-
-
-# /etc/apparmor.d/abstractions/gunicorn_app
-#include <abstractions/python>
-
-# The app root DIRECTORY itself
-@{APP_ROOT}/ r,
-
-# Python files and libs
-@{APP_ROOT}/__pycache__ r,
-@{APP_ROOT}/__pycache__/** wmr,
-@{APP_ROOT}/*.{py,pyc} mr,
-@{APP_ROOT}/virtualenv/* r,
-@{APP_ROOT}/virtualenv/**/ r,
-@{APP_ROOT}/virtualenv/lib/**.{py,pyc} mr,
-@{APP_ROOT}/virtualenv/lib/python3.6/orig-prefix.txt r,
-
-# Gunicorn and Python
-@{APP_ROOT}/virtualenv/bin/gunicorn r,
-@{APP_ROOT}/virtualenv/bin/python3 ix,
-
-# Temporary file access
-/tmp/** rw,
-
-# Certain commands are executed in a shell by some modules, let's allow these guys
-/bin/dash Cx ->  shell_commands,
-
-# Reading process properties and resources
-owner /proc/@{pid}/fd/ r,
-owner /proc/@{pid}/mounts r,
-
-# Needed by ctypes to load native libraries in certain Python modules
-/{usr/bin/x86_64-linux-gnu-gcc-7,sbin/ldconfig,usr/bin/x86_64-linux-gnu-ld.bfd} Cx -> ctypes,
-
-profile shell_commands {
-  #include <abstractions/base>
-  /bin/dash mrix,
-  /bin/uname mrix, # Some modules execute uname to figure out the current OS instead of using os.uname...
-}
-
-profile ctypes {
-  #include <abstractions/base>
-  #include <abstractions/python>
-  /{usr/bin/x86_64-linux-gnu-gcc-7,sbin/ldconfig,sbin/ldconfig.real,usr/bin/x86_64-linux-gnu-ld.bfd} mrix,
-  /bin/dash mrix,
-  /usr/bin/x86_64-linux-gnu-objdump mrix,
-  /tmp/* wr,
-  /usr/lib/gcc/x86_64-linux-gnu/7/collect2 mrix,
-}
-
-
-# /etc/apparmor.d/vulnerable
 #include <tunables/global>
 #include <tunables/sys>
 
@@ -1221,56 +1091,87 @@ profile vulnerable @{APP_ROOT}/virtualenv/bin/gunicorn {
   # Dynamic linker
   /lib/x86_64-linux-gnu/ld-*.so mr,
 
-  # Networking
-  network inet tcp,
-
   # Reading the user database
   /etc/passwd r,
   /etc/nsswitch.conf r,
 
-  change_profile -> @{PARENT_PROFILE}//needs_config_file_access,
-  change_profile -> @{PARENT_PROFILE}//needs_html_templates,
-  change_profile -> @{PARENT_PROFILE}//needs_imagemagick,
-}
-
-profile @{PARENT_PROFILE}//needs_config_file_access {
-    change_profile -> @{PARENT_PROFILE},
+  ^needs_config_file_access {
     #include <abstractions/base>
     #include <abstractions/gunicorn_app>
     #include <abstractions/apparmor_api>
-    # Reading configuration file
+    ## Reading configuration file
     @{APP_ROOT}/config.prod.cfg r,
-}
+  }
 
-profile @{PARENT_PROFILE}//needs_html_templates {
-    change_profile -> @{PARENT_PROFILE},
+  ^needs_html_templates {
     # Reading template files
     #include <abstractions/base>
     #include <abstractions/gunicorn_app>
     #include <abstractions/apparmor_api>
     @{APP_ROOT}/templates/*.html r,
-}
+  }
 
-profile @{PARENT_PROFILE}//needs_imagemagick {
-    change_profile -> @{PARENT_PROFILE},
+  ^needs_imagemagick {
     #include <abstractions/base>
     #include <abstractions/gunicorn_app>
     #include <abstractions/apparmor_api>
-    #include <abstractions/vulnerable.imagemagick>
     # Run imagemagick to convert stuff
-    /usr/local/bin/convert Cx,
+    # convert cli
+    /usr/local/bin/convert mrix,
+    # ImageMagick shared libraries
+    /usr/local/lib/*.so* mr,
+    # ImageMagick config files
+    /usr/local/etc/ImageMagick-6/* r,
+    /usr/local/share/ImageMagick-6/* r,
+    # User files (input and output)
+    @{UPLOADS_DIR}/* r,
+    @{RESULTS_DIR}/* rw,
+  }
 }
 ```
+
+The `apparmor_api` abstraction allows us to use a low level interface of the AppArmor API with file operations over `/proc/$pid/attr/current`. Child profiles prefixed with the ^ are hats - there is no need to explicitly allow hat transitions - once defined, it is legal for the program to transition from the parent profile to one of its hats.
 
 
 
 ## Bypasses and privilege escalations
 
-Let's quickly see that it's not very difficult to write vulnerable profiles.
+AppArmor (like everything else) is not snake oil - it is just as good at preventing incidents with sandboxing as your profiles are. (And it has its own share of bugs and problems and complexities just as any other piece of software).
 
 * rename_problem + demo with caveats/rename_problem.c
 * writes to `cron.d/*` files
 * `sys_ptrace` + injection (`/proc/sys/kernel/yama/ptrace_scope` and  write to `/proc/<pid>/mem`)
 * writes to `/proc/<pid>/attr/current` - changing AppArmor profile
 * `cap_sys_module` and several other capability rules
+* lack of environment scrubbing on execution (using lowercase `px` and `cx` instead of `Px` and `Cx`) may make it possible to exploit `LD_PRELOAD` to alter program execution,
+* profile transitions do not cause 
+
+First of all, go to `/vagrant/caveats` and run `make` to put everything we need in place.
+
+## Rename problem
+
+In this scenario, the profile for `rename_problem` allows read-write access to all files and directories within `/home/vagrant` while explicitly denies read access to `/home/vagrant/.ssh/id_rsa` . This looks fine, one might think that this profile does not let an application read the SSH private key. That's what `rename_problem` tries to do nevertheless, just in a tricky way:
+
+```
+$ sudo aa-enforce /etc/apparmor.d/rename_problem
+$ ./rename_problem
+```
+
+The bypass works by first exploiting the write permission in `/home/vagrant` and renaming the `.ssh` directory. Than because we have read access to all files except `/home/vagrant/.ssh/id_rsa` - but that is now, after the rename, called `/home/vagrant/.sshs/id_rsa` , we can read the renamed file without a problem. Then we may clean up our mess to remain undetected and not break SSH. Check `rename_problem.c` !
+
+
+
+## Powerful capabilities
+
+Certain capabilities can provide extremely powerful permissions. One of my favourites is `sys_module` which allows a program to load an arbitrary kernel module into the kernel. Thus an attacker can exploit this to load a module that bypasses AppArmor by simply not using any syscalls to access files, but instead use the VFS kernel API to carry out file operations. 
+
+
+
+The profile of `/vagrant/caveats/cap_problem.sh` does not alllow any read access, yet, the process will steal information from `/etc/shadow` by loading a kernel module that directly reads it, bypassing the standard I/O system calls:
+
+```
+$ sudo aa-enforce /etc/apparmor.d/cap_proble
+$ sudo ./cap_problem.sh
+$ sudo dmesg
+```
 
