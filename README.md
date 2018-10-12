@@ -26,7 +26,7 @@ $ vagrant up && vagrant ssh
 $ ls -la /vagrant
 ```
 
-
+Note: Please make sure that port 8080 is free to bind to on your host OS while the workshop VM is running!
 
 ## Building the image
 
