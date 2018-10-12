@@ -23,8 +23,6 @@ def load_config():
 @app.before_first_request
 #@sandbox("needs_config_file_access")
 def app_setup():
-    import ctypes.util
-    ctypes.util.find_library("c")
     print("[*] Loading config...")
     load_config()
     os.makedirs(app.config['UPLOAD_FOLDER'], mode=0o744, exist_ok=True)
@@ -58,7 +56,7 @@ def convert_user_file(input_path, output_path, scale_param):
         os.remove(input_path)
     return convert_result
 
-#@app.route('/convert', methods=['POST'])
+@app.route('/convert', methods=['POST'])
 def upload():
     # Get the name of the uploaded file
     ufile = request.files['file']
