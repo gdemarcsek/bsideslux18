@@ -294,7 +294,7 @@ set -g mouse on
 #set -g status-position top
 
 new  -n Gunicorn_App bash /vagrant/enter_gunicorn_virtualenv.sh
-neww -n AppArmor_Profile sudo bash -c "vim /etc/apparmor.d/*gunicorn* ; $SHELL"
+neww -n AppArmor_Profile sudo bash -c "vim /etc/apparmor.d/ ; $SHELL"
 neww -n AppArmor_Logs sudo bash /vagrant/follow_apparmor_logs.sh
- 
+neww -n Workshop_Guide less /vagrant/README.md
 
