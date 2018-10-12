@@ -5,12 +5,7 @@
       "execute_command": "echo 'vagrant' | {{.Vars}} sudo -S -E bash '{{.Path}}'",
       "script": "scripts/setup.sh"
     },
-    {
-      "type": "file",
-      "source": "screenrc",
-      "destination": "/home/vagrant/.screenrc"
-    },
-    {
+     {
         "type": "file",
         "source": ".tmux.conf",
         "destination": "/home/vagrant/.tmux.conf"
