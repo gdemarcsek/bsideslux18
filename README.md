@@ -7,8 +7,8 @@ This is the repository of my AppArmor workshop at BSides Luxembourg 2018
 # Lab setup
 
 ## Required software
- * VirtualBox
- * Vagrant
+ * VirtualBox (>= 5.2.19)
+ * Vagrant (>= 2.1.2) -- recommended
 
 ## Environment setup
 Follow the download link to get the Vagrant box and install it:
@@ -17,11 +17,7 @@ Follow the download link to get the Vagrant box and install it:
 $ vagrant box add --force --name bsideslux18/apparmor virtualbox-gdemarcs-bsideslux18.box
 ```
 
-
-
 Then spin up the virtual machine:
-
-
 
 ```
 $ git clone --depth=1 --branch master https://github.com/gdemarcsek/bsideslux18.git
@@ -30,17 +26,7 @@ $ vagrant up && vagrant ssh
 $ ls -la /vagrant
 ```
 
-## Web app setup
 
-This step will only be needed later, but this is how you can set up the Python web app:
-
-```
-$ cd ~/vulnerable-web-app
-$ sudo pip install virtualenv
-$ virtualenv -p python3 --system-site-packages virtualenv
-$ source ./virtualenv/bin/activate
-$ pip install -r requirements.txt
-```
 
 ## Building the image
 
@@ -130,8 +116,6 @@ int main(int argc, char **argv) {
 }
 ```
 
-[EXTRA-EXPLANATION]
-
 Let's compile it:
 
 ```
@@ -151,7 +135,7 @@ Let's generate a base profile for our hello world application:
 $ sudo aa-autodep aa_hello_world
 ```
 
-[EXTRA-EXPLANATION]
+`aa-autodep` simply enumerates the output of `ldd aa_hello_world` to figure out the required shared libraries, plus it includes some trivial statements, like including the base abstraction (required for pretty much all profiles, we will see later on) and adding a statement that allows to execute the binary itself. It is also smart enough to parse the hashbang in the initial line of scripts - we will also see this later.
 
 Now let's check the generated profile!
 
@@ -542,11 +526,7 @@ The base policy provides a bunch of common permissions that are needed by the va
 $ cat /etc/apparmor.d/abstractions/base | grep ld
 ```
 
-So, `aa-autodep` is not perfect - it should have recognized that it's adding a duplicate rule. In other words, yes, we could remove those lines, but not because they are not needed, but because they are already present in the base abstraction. 
-
-
-
-Let's put the profile back into enforce mode and run the script again:
+But for some reason, none of these statements match the location of ld on this particular distribution, so that's why `aa-autodep` has to generate that rule.
 
 ```
 $ sudo aa-enforce /etc/apparmor.d/vagrant.aa_hello_world.sh
@@ -569,8 +549,6 @@ Let's create a profile that:
 
 * Allows to read any user-owned files in vagrant's home, except for SSH keys and configs (files under ~/.ssh)
 * Allows the execution any other program with the same profile but with auditing enforced
-
-
 
 Our target program will be little shell script in `/vagrant/aa_qualifiers.sh` . First we are going to create an initial profile:
 
@@ -635,9 +613,7 @@ The `owner` qualifier only lets the program read the files that are owned by the
 
 ## Inspecting the vulnerabilities of the web application
 
-Let's briefly go through the potential vulnerabilities our web application suffers from. First of all, let's have a screen session inside the VM - just so we can have multiple terminals - and start the web application (assuming the web app is set up as shown in the earlier chapter and we are already in the virtualenv in `/vagrant/vulnerable-web-app/`):
-
-
+Let's briefly go through the potential vulnerabilities our web application suffers from. First of all, let's have a tmux session inside the VM - just so we can have multiple terminals - and start the web application (assuming the web app is set up as shown in the earlier chapter and we are already in the virtualenv in `/vagrant/vulnerable-web-app/`):
 
 ```
 $ gunicorn -c gunicorn.conf.py wsgi
@@ -653,11 +629,11 @@ First of all, let's try it with something inoccous: try and resize `payloads/inn
 
 
 
-*Together: Check the code of the application*
+Check the code of the application in `/vagrant/application.py` to see how it works.
 
 
 
-Now as we can see our little web service is quite simple and looks pretty much secure Unfortunately though, the ImageMagick library and - thus the convert utility as well - is vulnerable to various attack vectors, including arbitrary command execution, local file read, local file deletion and server side request forgery. I'm pretty sure that you know what we are seeing here - we are dealing with the infamous shitbucket often referred to as "ImageTragick". 
+Now as we can see our little web service is quite simple and looks pretty much secure. Unfortunately though, the ImageMagick library and - thus the `convert` utility as well - is vulnerable to various attack vectors, including arbitrary command execution, local file read, local file deletion and server side request forgery. I'm pretty sure that you know what we are seeing here - we are dealing with the infamous shitbucket often referred to as "ImageTragick". 
 
 
 
@@ -675,41 +651,10 @@ payloads/delete.jpg - Delete the .bash_history file of the vagrant user
 
 ## Writing our AppArmor profile for a vulnerable web application
 
-Let's stop the web service for a while. We are going to create a profile in 2 phases:
-
-1. Startup and serving requests - first we. only start and stop the application to see what common access rights are needed
-2. We are going to exercise the app with a legitimate payload (innocent.jpg)
-
-But first, which process are we trying to confine? To answer that question, we must ask ourselves: which file is executed to start the server process? Well it is unicorn:
+We are going to immunize our web application to all of these flaws by carefully confining it with AppArmor. Let's kick things off with an initial profile - move it to `/etc/apparmor.d/vulnerable` and enforce it!
 
 ```
-$ which gunicorn
-/vagrant/vulnerable-web-app/virtualenv/bin/gunicorn
-```
-
-Well obviously, there could be some other shell scripts wrapping the gunicorn process, but that's OK, our app would still be confined. The problem arises when somebody starts our WSGI applciation with an alternative web server, say Flask's development server or Tornado. If the service is started without executing the gunicorn file, our web app would stay unconfined and unprotected. We are going to address this later on, but for the moment, let's just ignore this problem for a second, we will get back to this.
-
-
-
-But first, let's create an initial profile:
-
-```
-$ sudo aa-autodep $(which gunicorn)
-```
-
-The initial profile seems good, but just for the sake of making our lives easier, let's add the following line to the profile and put it into complain mode:
-
-```
-#include <abstractions/python>
-```
-
-This will allow our process to read and map common Python libraries. Additionally, we are going to add a few more rules that will just let our Python process use the required libraries found in its virtual environment.
-
-Before moving on, we should have a profile like this:
-
-(this file is located in here: gunicorn_initial_profile)
-
-```
+## SNIPPET-gunicorn-initial
 # Last Modified: Sat Sep 15 09:40:15 2018
 #include <tunables/global>
 
@@ -742,7 +687,7 @@ profile vulnerable @{APP_ROOT}/virtualenv/bin/gunicorn {
 }
 ```
 
-This is the point for me to say: I do not generally suggest to use `aa-logprof` / `aa-genprof` - it's quite full of bugs and doesn't provide so much of help in case of complex applications. So instead, let's just start from here, put it into enforce mode and work our way to making things work. Don't forget, first we will just focus on getting the Python service running, without exercising any functionality. 
+This is the point for me to say: I do not *generally* suggest to use `aa-logprof` / `aa-genprof` - it's quite full of bugs and doesn't provide so much of help in case of complex applications. So instead, let's just start from here, put it into enforce mode and work our way to making things work. Don't forget, first we will just focus on getting the Python service running, without exercising any functionality. 
 
 
 
@@ -757,8 +702,6 @@ Not too surprising: we did not yet allow our program to use the network, so let'
 ```
 network inet tcp
 ```
-
-
 
 The next issue we will run into is that gunicorn tries to use some temporary files:
 
@@ -1019,7 +962,7 @@ so we can go ahead and add a new line allowing read access to the config file. I
  @{APP_ROOT}/templates/*.html r,
 ```
 
-We can work our way further in the application following the logs, creating a child profile this time for ImageMagick. As we follow the logs, nothing should surprise us too much, but we should stick with following the audit logs - those never lie (e.g. it will show you real paths resolving all symbolic links and because they are from the running application, we are seeing the results corresponding to the current runtime environment)
+We can work our way further in the application: the next is to cover `convert_user_file`: we could be following the logs, creating a child profile this time for ImageMagick. Nothing surprising will be there,, but in practice, we should stick with following the audit logs - those never lie (e.g. it will show you real paths resolving all symbolic links and because they are from the running application, we are seeing the results corresponding to the current runtime environment). Now to speed things up, we can just copy & paste this subprofile to the big one:
 
 ```
 # SNIPPET-imagemagick-subprofile
@@ -1070,8 +1013,6 @@ Let's quickly review `apparmor_utils.py` a Python utility library that makes it 
 
 
 Let's uncomment the decorators from the endpoints in `application,py` and tranform our profile to the following:
-
-
 
 ```
 # SNIPPET-privsep-final
