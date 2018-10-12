@@ -64,11 +64,6 @@ chown -R vagrant:vagrant /home/vagrant/.ssh
 # Do not pass LC and LANG env vars
 sed -i 's/[^#]*\(AcceptEnv LANG LC_\*\)/#\1/g' /etc/ssh/sshd_config
 
-# Clone imagemagick pocs
-cd /home/vagrant
-git clone "https://github.com/ImageTragick/PoCs.git" .imagetragick
-chown -R vagrant:vagrant .imagetragick
-
 # Generate SSH key
 sudo -u vagrant ssh-keygen -t rsa -b 4096 -P lollollol -f /home/vagrant/.ssh/id_rsa
 
