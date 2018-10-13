@@ -1,0 +1,37 @@
+# The app root DIRECTORY itself
+@{APP_ROOT}/ r,
+
+# Gunicorn and Python
+@{APP_ROOT}/virtualenv/bin/gunicorn r,
+@{APP_ROOT}/virtualenv/bin/python3 ix,
+
+# Python files and libs
+@{APP_ROOT}/__pycache__ r,
+@{APP_ROOT}/__pycache__/** wmr,
+@{APP_ROOT}/__pycache__/*.{py,pyc} mr,
+@{APP_ROOT}/*.{py,pyc} mr,
+@{APP_ROOT}/virtualenv/* r,
+@{APP_ROOT}/virtualenv/**/ r,
+@{APP_ROOT}/virtualenv/lib/**.{py,pyc} mr,
+
+@{APP_ROOT}/virtualenv/lib/python3.6/orig-prefix.txt r,
+
+# Networking
+network inet tcp,
+
+# Temporary file access
+/tmp/** rw,
+
+# Read some process info
+owner /proc/@{pid}/fd/ r,
+owner /proc/@{pid}/mounts r,
+
+# Often needed by native extensions
+/bin/dash mrix,
+/bin/uname mrix, # Some modules execute uname to figure out the current OS instead of using os.uname...
+/{usr/bin/x86_64-linux-gnu-gcc-7,sbin/ldconfig,sbin/ldconfig.real,usr/bin/x86_64-linux-gnu-ld.bfd} mrix,
+/bin/dash mrix,
+/usr/bin/x86_64-linux-gnu-objdump mrix,
+/tmp/* wr,
+/usr/lib/gcc/x86_64-linux-gnu/7/collect2 mrix,
+

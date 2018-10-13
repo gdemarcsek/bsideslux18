@@ -20,6 +20,10 @@ sed -i "s/^.*requiretty/#Defaults requiretty/" /etc/sudoers
 # Disable daily apt unattended updates.
 echo 'APT::Periodic::Enable "0";' >> /etc/apt/apt.conf.d/10periodic
 
+# Create /vagrant
+mkdir -p /vagrant
+chown vagrant:vagrant /vagrant
+
 # Get workshop dependencies
 apt update
 apt install apparmor \
@@ -40,9 +44,18 @@ apt install apparmor \
             libpng16-16 libpng-dev libpng-tools \
             libjpeg-dev \
             ghostscript gsfonts \
-            tree ntp peco elf-dev -y
+            tree ntp peco git -y
+
+if [[ $? -ne 0 ]]; then
+    echo "failed to install apt packages"
+    exit 100
+fi
 
 pip install virtualenv
+if [[ $? -ne 0 ]]; then
+    echo "failed to install virtualenv"
+    exit 100
+fi
 
 IMAGETRAGICK_VERSION="6.8.6-10"
 IMAGETRAGICK_URL="https://www.imagemagick.org/download/releases/ImageMagick-${IMAGETRAGICK_VERSION}.tar.xz"
@@ -52,6 +65,13 @@ wget "$IMAGETRAGICK_URL" && \
     pushd ImageMagick-${IMAGETRAGICK_VERSION}/ && \
     ./configure --with-jpeg=yes --with-png=yes --with-rsvg=yes && \
     make && make install && popd && rm -rf ImageMagick-${IMAGETRAGICK_VERSION}/
+
+
+which convert
+if [[ $? -ne 0 ]]; then
+    echo "failed to build imagemagick"
+    exit 100
+fi
 
 # Add SSH key
 mkdir -p /home/vagrant/.ssh
@@ -67,10 +87,4 @@ sed -i 's/[^#]*\(AcceptEnv LANG LC_\*\)/#\1/g' /etc/ssh/sshd_config
 # Generate SSH key
 sudo -u vagrant ssh-keygen -t rsa -b 4096 -P lollollol -f /home/vagrant/.ssh/id_rsa
 
-# More cleanup
-apt autoremove
-dd if=/dev/zero of=/EMPTY bs=1M
-rm -f /EMPTY
-
-sync
 

@@ -394,7 +394,7 @@ network inet stream,
 *Explanation*:
 
 - /etc/nsswitch.conf and /etc/services are needed for DNS and protocol name <-> port resolutions done by netcat
-- w needs /etc/passwd and /etc/nsswitch.conf to get user information; it needs /run/utmp because that file contains the login records; it needs a bunch of files from /proc to display the uptime and load averages, CPU time and the command line of itself while /proc/sys/kernel/osrelease is probably needed because different kernels use slightly different utmp file format, fin
+- `w` needs `/etc/passwd` and `/etc/nsswitch.conf` to get user information; it needs /run/utmp because that file contains the login records; it needs a bunch of files from /proc to display the uptime and load averages, CPU time and the command line of itself while /proc/sys/kernel/osrelease is probably needed because different kernels use slightly different utmp file format, fin
 
 Resulting in a raw profile:
 
@@ -613,7 +613,7 @@ The `owner` qualifier only lets the program read the files that are owned by the
 
 ## Inspecting the vulnerabilities of the web application
 
-Let's briefly go through the potential vulnerabilities our web application suffers from. First of all, let's have a tmux session inside the VM - just so we can have multiple terminals - and start the web application (assuming the web app is set up as shown in the earlier chapter and we are already in the virtualenv in `/vagrant/vulnerable-web-app/`):
+Let's briefly go through the potential vulnerabilities our web application suffers from. First of all, let's have a `tmux` session inside the VM - just so we can have multiple terminals - and start the web application (assuming the web app is set up as shown in the earlier chapter and we are already in the virtualenv in `/vagrant/vulnerable-web-app/`):
 
 ```
 $ gunicorn -c gunicorn.conf.py wsgi

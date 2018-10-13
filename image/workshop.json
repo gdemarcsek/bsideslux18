@@ -5,7 +5,7 @@
       "execute_command": "echo 'vagrant' | {{.Vars}} sudo -S -E bash '{{.Path}}'",
       "script": "scripts/setup.sh"
     },
-     {
+    {
         "type": "file",
         "source": ".tmux.conf",
         "destination": "/home/vagrant/.tmux.conf"
@@ -14,6 +14,41 @@
         "type": "file",
         "source": ".tmux.conf.local",
         "destination": "/home/vagrant/.tmux.conf.local"
+    },
+    {
+        "type": "file",
+        "source": "follow_apparmor_logs.sh",
+        "destination": "/vagrant/"
+    },
+    {
+        "type": "file",
+        "source": "caveats",
+        "destination": "/vagrant"
+    },
+    {
+        "type": "file",
+        "source": "vulnerable-web-app",
+        "destination": "/vagrant"
+    },
+    {
+        "type": "file",
+        "source": "final_profiles",
+        "destination": "/vagrant"
+    },
+    {
+        "type": "file",
+        "source": "basic",
+        "destination": "/vagrant"
+    },
+    {
+      "type": "shell",
+      "execute_command": "echo 'vagrant' | {{.Vars}} sudo -S -E bash '{{.Path}}'",
+      "script": "scripts/build_webapp.sh"
+    },
+    {
+      "type": "shell",
+      "execute_command": "echo 'vagrant' | {{.Vars}} sudo -S -E bash '{{.Path}}'",
+      "script": "scripts/cleanup.sh"
     }
   ],
   "builders": [
