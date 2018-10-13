@@ -64,7 +64,7 @@ wget "$IMAGETRAGICK_URL" && \
     tar xf ImageMagick-${IMAGETRAGICK_VERSION}.tar.xz && \
     pushd ImageMagick-${IMAGETRAGICK_VERSION}/ && \
     ./configure --with-jpeg=yes --with-png=yes --with-rsvg=yes && \
-    make && make install && popd && rm -rf ImageMagick-${IMAGETRAGICK_VERSION}/
+    make -j 4 && make install && popd && rm -rf ImageMagick-${IMAGETRAGICK_VERSION}/
 
 
 which convert

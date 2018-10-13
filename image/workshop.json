@@ -7,21 +7,6 @@
     },
     {
         "type": "file",
-        "source": ".tmux.conf",
-        "destination": "/home/vagrant/.tmux.conf"
-    },
-    {
-        "type": "file",
-        "source": ".tmux.conf.local",
-        "destination": "/home/vagrant/.tmux.conf.local"
-    },
-    {
-        "type": "file",
-        "source": "follow_apparmor_logs.sh",
-        "destination": "/vagrant/"
-    },
-    {
-        "type": "file",
         "source": "caveats",
         "destination": "/vagrant"
     },
