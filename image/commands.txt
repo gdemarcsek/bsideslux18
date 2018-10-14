@@ -12,10 +12,10 @@ ping 1.1.1.1
 ps auxZ
 
 ## Loading and unloading profiles
-sudo aa-disable /bin/ping
+sudo aa-disabe /etc/apparmor.d/bin.ping
 ping 1.1.1.1
 ps auxZ
-sudo aa-enforce /bin/ping
+sudo aa-enforce /etc/apparmor.d/bin.ping
 
 ## Hello World of AppArmor
 gcc aa_hello_world.c -o aa_hello_world
@@ -30,7 +30,8 @@ sudo aa-enforce /vagrant/vagrant.aa_hello_world
 strace ./aa_hello_world 2>&1 | grep EACCES
 sudo ./aa_hello_world
 
-sudo cp /etc/apparmor.d/aa_hello_world.FINAL /etc/apparmor.d/vagrant.aa_hello_world
+# fix the profile :)
+
 sudo apparmor_parser -r /etc/apparmor.d/vagrant.aa_hello_world
 echo $?
 ./aa_hello_world
@@ -73,6 +74,7 @@ sudo chown root:root /home/vagrant/testfile
 sudo chmod o=r /home/vagrant/testfile
 # uncomment last command in aa_qualifiers.sh
 ./aa_qualifiers.sh
+sudo ./aa_qualifiers.sh
 
 # Chapter 2: A complex example
 # to start the app:

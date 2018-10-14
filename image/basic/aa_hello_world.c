@@ -1,5 +1,3 @@
-#include <string.h>
-#include <errno.h>
 #include <stdio.h>
 #include <pwd.h>
 #include <stdlib.h>
@@ -9,7 +7,7 @@ int main(int argc, char **argv) {
     uid_t current_uid = geteuid();
     struct passwd *ent = getpwuid(current_uid);
     if (ent == NULL) {
-        perror("getpwuid");
+        printf("Failed to read user database\n");
         return EXIT_FAILURE;
     }
 

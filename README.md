@@ -597,7 +597,7 @@ If we try to run again, we should see the following error message in the very en
 /usr/bin/head: cannot open '/home/vagrant/testfile' for reading: Permission denied
 ```
 
-The `owner` qualifier only lets the program read the files that are owned by the same fsuid (oid=fsuid). If we ran the script as root <--- I might have discovered an AppArmor bug here: TODO look into this!!!!
+The `owner` qualifier only lets the program read the files that are owned by the same fsuid (oid=fsuid). If we ran the script as root, we will be able to read the contents of `testfile` but we will fail to read files owned by `vagrant`. 
 
 
 
@@ -1075,7 +1075,7 @@ AppArmor (like everything else) is not snake oil - it is just as good at prevent
 * writes to `/proc/<pid>/attr/current` - changing AppArmor profile
 * `cap_sys_module` and several other capability rules may be too permissive
 * lack of environment scrubbing on execution (using lowercase `px` and `cx` instead of `Px` and `Cx`) may make it possible to exploit `LD_PRELOAD` to alter program execution,
-* profile transitions do not automatically close open file descriptors which may cause information leakage from parent to child - for `execve`-initiated transitions, this can be mitigated by supplying the `O_CLOEXEC` flag when `open`-ing a file, but for transitions done through the AppArmor API (`aa_change_profile`, `aa_change_hat`) the programmer needs to take care of closing open file descriptors to sensitive files
+* profile transitions do not automatically close open file descriptors which may cause information leakage from parent to child - for `execve`-initiated transitions, this can be mitigated by supplying the `O_CLOEXEC` flag when `open`-ing a file, but for transitions done through `aa_change_profile`  the programmer needs to take care of closing open file descriptors to sensitive files - `aa_change_hat` is safer in this sense, because it mediates `read` and `write` syscalls as well, thus no file descriptor leakage is possible there
 
  First of all, go to `/vagrant/caveats` and run `make` to put everything we need in place.
 

@@ -28,11 +28,13 @@ if [[ $? -ne 0 ]]; then
     exit 100
 fi
 
-echo "server.host: \"localhost\"" >> /etc/kibana/kibana.yml
+echo "server.host: \"0.0.0.0\"" >> /etc/kibana/kibana.yml
 
 systemctl enable auditbeat
 systemctl enable elasticsearch
 systemctl enable kibana
+
+rm /etc/auditbeat/audit.rules.d/sample-rules-linux-32bit.conf
 
 service kibana restart
 service auditbeat start

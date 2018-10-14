@@ -28,19 +28,13 @@
     {
         "type": "file",
         "source": "commands.txt",
-        "destination": "/vagrant"
+        "destination": "/vagrant/commands.txt"
     },
     {
       "type": "shell",
       "execute_command": "echo 'vagrant' | {{.Vars}} sudo -S -E bash '{{.Path}}'",
       "script": "scripts/build_webapp.sh"
     },
-    {
-      "type": "shell",
-      "execute_command": "echo 'vagrant' | {{.Vars}} sudo -S -E bash '{{.Path}}'",
-      "script": "scripts/elk.sh"
-    },
-
     {
       "type": "shell",
       "execute_command": "echo 'vagrant' | {{.Vars}} sudo -S -E bash '{{.Path}}'",
@@ -113,7 +107,12 @@
     [
       {
         "output": "builds/{{.Provider}}-gdemarcs-bsideslux18.box",
-        "type": "vagrant"
+        "type": "vagrant",
+        "keep_input_artifact": true
+      },
+      {
+        "type": "checksum",
+        "checksum_types": ["sha256"]
       }
     ]
   ]
