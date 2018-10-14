@@ -459,8 +459,6 @@ Resulting in a raw profile:
 
 
 
-OPTIONAL-CONTENT
-
 ----
 
 
@@ -813,8 +811,6 @@ Sep 22 20:10:01 vagrant audit[3972]: AVC apparmor="DENIED" operation="exec" prof
 We might wonder why our program needs to execute `ld`, `gcc` and `ldconfig` - well, it is mainly because we are using CPython where a significant part of Python modules use C libraries via the `ctype` Python module - which uses these executables to locate loadable shared libraries. Now while often times, well written modules will fall back to Python implementations when a native library is not found, unfortunately we cannot really on that generally, so we are going to have to include permissions to execute these binaries - although it would make sense to create a child profile for them. 
 
 
-
-OPTIONAL-CONTENT
 
 ---
 
