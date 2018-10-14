@@ -12,7 +12,7 @@ ping 1.1.1.1
 ps auxZ
 
 ## Loading and unloading profiles
-sudo aa-disabe /etc/apparmor.d/bin.ping
+sudo aa-disable /etc/apparmor.d/bin.ping
 ping 1.1.1.1
 ps auxZ
 sudo aa-enforce /etc/apparmor.d/bin.ping
