@@ -1,10 +1,7 @@
 #!/bin/bash
 
-echo "screenrc"
-/usr/bin/head -n1 /home/vagrant/.screenrc
-
-echo "tmux config"
-/usr/bin/head -n1 /home/vagrant/.tmux.conf
+echo ".vbox_version"
+/usr/bin/head -n1 /home/vagrant/.vbox_version
 
 echo "authorized keys"
 /usr/bin/head -n1 /home/vagrant/.ssh/authorized_keys

@@ -66,6 +66,7 @@ sudo aa-enforce /etc/apparmor.d/vagrant.aa_hello_world.sh
 
 ## Using rule qualifiers
 cat /etc/apparmor.d/aa_qualifiers
+cat /vagrant/aa_qualifiers.sh
 sudo aa-enforce /etc/apparmor.d/aa_qualifiers
 ./aa_qualifiers.sh
 
@@ -93,10 +94,11 @@ gunicorn -c gunicorn.conf.py wsgi
 
 # try exploits again
 
-$EDITOR /etc/apparmor.d/vulnerable
+vim /etc/apparmor.d/vulnerable
+vim application.py
 
 # Chapter 3: Bypasses
-cd caveats
+cd /vagrant/caveats
 make
 
 # rename_problem
