@@ -3,3 +3,4 @@ output-*/
 test/.vagrant/
 .vagrant/
 builds/
+*.checksum
