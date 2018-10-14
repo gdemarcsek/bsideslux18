@@ -141,19 +141,9 @@ Now let's check the generated profile!
 
 ```
 $ sudo cat /etc/apparmor.d/vagrant.aa_hello_world 
-# Last Modified: Mon Sep  3 21:31:29 2018
-#include <tunables/global>
-
-/vagrant/aa_hello_world flags=(complain) {
-  #include <abstractions/base>
-
-  /vagrant/aa_hello_world mr,
-  /lib/x86_64-linux-gnu/ld-*.so mr,
-
-}
 ```
 
-Now let's put it into enforce mode:
+Load it and put it into enforce mode:
 
 ```
 $ sudo aa-enforce /vagrant/aa_hello_world
@@ -188,7 +178,7 @@ AppArmor enforces the policy for the root user too.
 
 
 
-Now let's fix the AppArmor profile - we want it to allow all legal actions of our applications:
+Now let's fix the AppArmor profile - we want it to allow all legal actions of our applications, in other words, our profile is a description of "normal" behaviour:
 
 ```
 # Last Modified: Mon Sep  3 21:31:29 2018
@@ -498,7 +488,7 @@ openat(AT_FDCWD, "/lib/x86_64-linux-gnu/libc.so.6", O_RDONLY|O_CLOEXEC) = 3
 ...
 ```
 
-As we can see, instead of opening ld-2.27.so, we are accessing /etc/ld.so.cache - a file that contains library paths compliled by ld.so and it can be used as a cache to find the location of shared objects, like libc - the program gets the location of libc from this file and opens it. So do we really need the read and mmap right for the dynamic linker? Shouldn't we have a rule instead that allows reading and mapping /etc/ld.so.cache? Yep, right, so here is the deal. aa-genprof uses aa-autodep to generate the initial profile before inspecing any logs. Now aa-autodep invoked `ldd` to figure out which shared libraries are required by an ELF executable because it wants to help your life by putting the required shared libraries into the profile automatically. Now  `ldd` shows the loaded libraries after resolution and even those that are mapped automatically by the kernel - these libraries will not show up in the output of `strace` either. 
+As we can see, instead of opening `ld-2.27.so`, we are accessing `/etc/ld.so.cache` - a file that contains library paths compliled by `ld.so` and it can be used as a cache to find the location of shared objects, like libc - the program gets the location of libc from this file and opens it. So do we really need the read and `mmap/PROT_EXEC` right for the dynamic linker? Shouldn't we have a rule instead that allows reading and mapping `/etc/ld.so.cache`? Yep, right, so here is the deal. `aa-genprof` uses  `aa-autodep` (on the Python API level) to generate the initial profile before inspecing any logs. Now aa-autodep invoked `ldd` to figure out which shared libraries are required by an ELF executable because it wants to help your life by putting the required shared libraries into the profile automatically. Now  `ldd` shows the loaded libraries after resolution and even those that are mapped automatically by the kernel - these libraries will not show up in the output of `strace` either (see: `man vdso`)
 
 
 
@@ -1083,11 +1073,11 @@ AppArmor (like everything else) is not snake oil - it is just as good at prevent
 * writes to `cron.d/*` files
 * `sys_ptrace` + injection (`/proc/sys/kernel/yama/ptrace_scope` and  write to `/proc/<pid>/mem`)
 * writes to `/proc/<pid>/attr/current` - changing AppArmor profile
-* `cap_sys_module` and several other capability rules
+* `cap_sys_module` and several other capability rules may be too permissive
 * lack of environment scrubbing on execution (using lowercase `px` and `cx` instead of `Px` and `Cx`) may make it possible to exploit `LD_PRELOAD` to alter program execution,
-* profile transitions do not cause 
+* profile transitions do not automatically close open file descriptors which may cause information leakage from parent to child - for `execve`-initiated transitions, this can be mitigated by supplying the `O_CLOEXEC` flag when `open`-ing a file, but for transitions done through the AppArmor API (`aa_change_profile`, `aa_change_hat`) the programmer needs to take care of closing open file descriptors to sensitive files
 
-First of all, go to `/vagrant/caveats` and run `make` to put everything we need in place.
+ First of all, go to `/vagrant/caveats` and run `make` to put everything we need in place.
 
 ## Rename problem
 
@@ -1098,7 +1088,7 @@ $ sudo aa-enforce /etc/apparmor.d/rename_problem
 $ ./rename_problem
 ```
 
-The bypass works by first exploiting the write permission in `/home/vagrant` and renaming the `.ssh` directory. Than because we have read access to all files except `/home/vagrant/.ssh/id_rsa` - but that is now, after the rename, called `/home/vagrant/.sshs/id_rsa` , we can read the renamed file without a problem. Then we may clean up our mess to remain undetected and not break SSH. Check `rename_problem.c` !
+The bypass works by first exploiting the write permission in `/home/vagrant` and renaming the `.ssh` directory. Than because we have read access to all files except `/home/vagrant/.ssh/id_rsa` - but that is now, after the rename, called `/home/vagrant/.sshx/id_rsa` , we can read the renamed file without a problem. Then we may clean up our mess to remain undetected and not break SSH. Check `rename_problem.c` !
 
 
 
@@ -1111,7 +1101,7 @@ Certain capabilities can provide extremely powerful permissions. One of my favou
 The profile of `/vagrant/caveats/cap_problem.sh` does not alllow any read access, yet, the process will steal information from `/etc/shadow` by loading a kernel module that directly reads it, bypassing the standard I/O system calls:
 
 ```
-$ sudo aa-enforce /etc/apparmor.d/cap_proble
+$ sudo aa-enforce /etc/apparmor.d/cap_problem
 $ sudo ./cap_problem.sh
 $ sudo dmesg
 ```

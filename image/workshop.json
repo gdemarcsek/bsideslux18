@@ -22,7 +22,12 @@
     },
     {
         "type": "file",
-        "source": "basic",
+        "source": "basic/",
+        "destination": "/vagrant"
+    },
+    {
+        "type": "file",
+        "source": "commands.txt",
         "destination": "/vagrant"
     },
     {
@@ -30,6 +35,12 @@
       "execute_command": "echo 'vagrant' | {{.Vars}} sudo -S -E bash '{{.Path}}'",
       "script": "scripts/build_webapp.sh"
     },
+    {
+      "type": "shell",
+      "execute_command": "echo 'vagrant' | {{.Vars}} sudo -S -E bash '{{.Path}}'",
+      "script": "scripts/elk.sh"
+    },
+
     {
       "type": "shell",
       "execute_command": "echo 'vagrant' | {{.Vars}} sudo -S -E bash '{{.Path}}'",

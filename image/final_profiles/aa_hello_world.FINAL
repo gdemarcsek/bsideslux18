@@ -1,0 +1,10 @@
+#include <tunables/global>
+
+/vagrant/aa_hello_world {
+  #include <abstractions/base>
+
+  /vagrant/aa_hello_world mr,
+  /lib/x86_64-linux-gnu/ld-*.so mr,
+  /etc/passwd r,
+}
+

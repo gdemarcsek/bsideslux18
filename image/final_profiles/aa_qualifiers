@@ -1,0 +1,16 @@
+#include <tunables/global>
+
+/vagrant/aa_qualifiers.sh {
+  #include <abstractions/base>
+  #include <abstractions/bash>
+
+  /bin/bash ix,
+  /vagrant/aa_qualifiers.sh r,
+  /lib/x86_64-linux-gnu/ld-*.so mr,
+
+  owner /home/vagrant/** r,	# all files and dirs within the home dir
+  deny /home/vagrant/.ssh/** r,  # deny read to all files and dirs within
+
+  audit /** ix, # allow running any other program with the same confinement
+}
+

@@ -1,0 +1,110 @@
+# Setup
+
+sudo cp -r /vagrant/final_profiles/* /etc/apparmor.d/
+
+# Chapter 1: Basics
+## Checking status
+sudo aa-status
+sudo systemctl enable apparmor
+
+## Checking confinement status
+ping 1.1.1.1
+ps auxZ
+
+## Loading and unloading profiles
+sudo aa-disable /bin/ping
+ping 1.1.1.1
+ps auxZ
+sudo aa-enforce /bin/ping
+
+## Hello World of AppArmor
+gcc aa_hello_world.c -o aa_hello_world
+./aa_hello_world
+
+sudo aa-autodep aa_hello_world
+sudo cat /etc/apparmor.d/vagrant.aa_hello_world
+
+sudo aa-enforce /vagrant/vagrant.aa_hello_world
+./aa_hello_world
+
+strace ./aa_hello_world 2>&1 | grep EACCES
+sudo ./aa_hello_world
+
+sudo cp /etc/apparmor.d/aa_hello_world.FINAL /etc/apparmor.d/vagrant.aa_hello_world
+sudo apparmor_parser -r /etc/apparmor.d/vagrant.aa_hello_world
+echo $?
+./aa_hello_world
+
+## Fixing profiles on the fly
+gcc aa_hello_world_2.c -o aa_hello_world
+./aa_hello_world
+echo "break the aa_hello_world profile, and then:" ; sudo apparmor_parser -r /etc/apparmor.d/vagrant.aa_hello_world
+# observe
+echo "fix the aa_hello_world profile, and then:" ; sudo apparmor_parser -r /etc/apparmor.d/vagrant.aa_hello_world
+# kill aa_hello_world
+
+## Profiles must be loaded before starting the process
+echo "break the aa_hello_world profile, and then:" ; sudo apparmor_parser -r /etc/apparmor.d/vagrant.aa_hello_world
+sudo aa-disable /vagrant/vagrant.aa_hello_world
+./aa_hello_world
+sudo aa-enforce /vagrant/vagrant.aa_hello_world
+
+## Inspecting the logs
+./aa_hello_world
+sudo journalctl -f -a _TRANSPORT=audit --no-pager | aa-decode | grep AVC
+# this would not work with auditd: sudo ausearch -ts recent -m avc
+
+## Checking the policy layout
+tree -d /etc/apparmor.d/
+
+## Using aa-genprof
+cat ./aa_hello_world.sh
+sudo aa-genprof ./aa_hello_world.sh
+cat /etc/apparmor.d/vagrant.aa_hello_world.sh
+sudo aa-enforce /etc/apparmor.d/vagrant.aa_hello_world.sh
+
+## Using rule qualifiers
+cat /etc/apparmor.d/aa_qualifiers
+sudo aa-enforce /etc/apparmor.d/aa_qualifiers
+./aa_qualifiers.sh
+
+echo "test" > /home/vagrant/testfile
+sudo chown root:root /home/vagrant/testfile
+sudo chmod o=r /home/vagrant/testfile
+# uncomment last command in aa_qualifiers.sh
+./aa_qualifiers.sh
+
+# Chapter 2: A complex example
+# to start the app:
+cd /vagrant/vulnerable-web-app
+source ./virtualenv/bin/activate
+gunicorn -c gunicorn.conf.py wsgi
+
+# payloads
+
+# to load and enforce the profile:
+sudo aa-enforce /etc/apparmor.d/vulnerable
+
+# stop
+export APPARMOR=1
+gunicorn -c gunicorn.conf.py wsgi
+
+# try exploits again
+
+$EDITOR /etc/apparmor.d/vulnerable
+
+# Chapter 3: Bypasses
+cd caveats
+make
+
+# rename_problem
+
+sudo aa-enforce /etc/apparmor.d/rename_problem
+./rename_problem
+cat ./rename_problem.c
+
+# cap_sys_module
+sudo aa-enforce /etc/apparmor.d/cap_problem
+sudo ./cap_problem.sh
+sudo dmesg
+
