@@ -24,7 +24,7 @@ gcc aa_hello_world.c -o aa_hello_world
 sudo aa-autodep aa_hello_world
 sudo cat /etc/apparmor.d/vagrant.aa_hello_world
 
-sudo aa-enforce /vagrant/vagrant.aa_hello_world
+sudo aa-enforce /etc/apparmor.d/vagrant.aa_hello_world
 ./aa_hello_world
 
 strace ./aa_hello_world 2>&1 | grep EACCES
@@ -61,11 +61,11 @@ tree -d /etc/apparmor.d/
 ## Using aa-genprof
 cat ./aa_hello_world.sh
 sudo aa-genprof ./aa_hello_world.sh
-cat /etc/apparmor.d/vagrant.aa_hello_world.sh
+sudo cat /etc/apparmor.d/vagrant.aa_hello_world.sh
 sudo aa-enforce /etc/apparmor.d/vagrant.aa_hello_world.sh
 
 ## Using rule qualifiers
-cat /etc/apparmor.d/aa_qualifiers
+sudo cat /etc/apparmor.d/aa_qualifiers
 cat /vagrant/aa_qualifiers.sh
 sudo aa-enforce /etc/apparmor.d/aa_qualifiers
 ./aa_qualifiers.sh

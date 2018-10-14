@@ -7,7 +7,7 @@
 @{RESULTS_DIR} = /tmp/bsideslux18/converted/
 @{PARENT_PROFILE} = vulnerable
 
-profile vulnerable @{APP_ROOT}/virtualenv/bin/gunicorn {
+profile vulnerable {
   #include <abstractions/base>
   #include <abstractions/apparmor_api>
   #include <abstractions/gunicorn_app>
