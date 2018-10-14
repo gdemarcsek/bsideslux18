@@ -103,12 +103,15 @@ make
 
 # rename_problem
 
+cat /etc/apparmor.d/rename_problem
 sudo aa-enforce /etc/apparmor.d/rename_problem
 ./rename_problem
 cat ./rename_problem.c
 
 # cap_sys_module
+cat /etc/apparmor.d/cap_problem
 sudo aa-enforce /etc/apparmor.d/cap_problem
+cat ./cap_problem.sh
 sudo ./cap_problem.sh
 sudo dmesg
-
+cat ./sys_module.c
