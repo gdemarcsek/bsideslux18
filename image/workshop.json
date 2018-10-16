@@ -114,6 +114,11 @@
           "modifyvm",
           "{{.Name}}",
           "--natpf1", "web,tcp,,8080,,8080"
+        ],
+        [
+          "modifyvm",
+          "{{.Name}}",
+          "--vram", "128"
         ]
       ]
     }
