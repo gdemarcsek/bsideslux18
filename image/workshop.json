@@ -36,6 +36,11 @@
       "script": "scripts/build_webapp.sh"
     },
     {
+        "type": "file",
+        "source": "gdm_config.conf",
+        "destination": "/tmp/gdm_custom.conf"
+    },
+    {
         "type": "shell",
         "execute_command": "echo 'vagrant' | {{.Vars}} sudo -S -E bash '{{.Path}}'",
         "script": "scripts/desktop.sh"
