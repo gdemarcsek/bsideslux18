@@ -21,6 +21,11 @@ echo "==> Checking version of Ubuntu"
     #echo "==> Configuring lightdm autologin"
     #echo "[SeatDefaults]" >> $LIGHTDM_CONFIG
     #echo "autologin-user=${USERNAME}" >> $LIGHTDM_CONFIG
+    if [[ -f $GDM_CUSTOM_CONFIG ]]; then
+        echo "InitialSetupEnable=false" >> $GDM_CUSTOM_CONFIG
+    else
+        echo "InitialSetupEnable=false" > $GDM_CUSTOM_CONFIG
+    fi
 
 if [ -d /etc/xdg/autostart/ ]; then
     echo "==> Disabling screen blanking"

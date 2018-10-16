@@ -32,7 +32,7 @@ sudo ./aa_hello_world
 
 # fix the profile :)
 # copy&paste:
-#/etc/passwd r,
+/etc/passwd r,
 /etc/nsswitch.conf r,
 
 sudo apparmor_parser -r /etc/apparmor.d/vagrant.aa_hello_world
