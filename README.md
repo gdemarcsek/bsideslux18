@@ -1102,3 +1102,5 @@ $ sudo ./cap_problem.sh
 $ sudo dmesg
 ```
 
+A plot twist: although we are using a kernel API here, actually the LSM provides an interface to hook into `kernel_read`, at least in newer kernel versions, see for example: https://elixir.bootlin.com/linux/v4.7/source/fs/exec.c#L851 - so at least this could be solved by extending AppArmor with mediating `kernel_read` as well.  
+
