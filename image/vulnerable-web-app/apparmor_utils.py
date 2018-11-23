@@ -41,7 +41,7 @@ class sandbox(ContextDecorator):
 def get_current_confinement():
     with open("/proc/self/attr/current", "r") as attr_file:
         line = attr_file.read().strip()
-        parts = re.match(r'"?([a-zA-Z0-9_\-/&:\+ ]+)"? \((\w+)\)', "vulnerable (complain)")
+        parts = re.match(r'"?([a-zA-Z0-9_\-/&:\+ ]+)"? \((\w+)\)', line)
         return (parts.group(1), parts.group(2))
 
 def enter_confinement(profile):
